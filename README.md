@@ -1,4 +1,4 @@
-# neo: A compiler for learning compilers
+# neo :seedling:: A compiler for learning compilers
 
 ## My Problem
 I really wanted to get into compiler engineering and studied a bunch of literature and course work.
