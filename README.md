@@ -37,13 +37,53 @@ const add = a + b;
 const sub = a - b;
 const mul = a * b;
 const div = a / b;
+const eq = a == b;
+const neq = a != b;
 ```
 
 ### Arrays
 ```
-const a: int[4] = [1, 2, 3, 4];
+const a: [4]int = {1, 2, 3, 4};
 const b: int = a[2]; # b = 3
 ```
+
+### Loops
+```
+# for-loop
+for (var i = 0; i < 10; i += 1) {
+  ...
+}
+
+# while-loop
+const i = 0;
+while (i < 10) {
+  i += 1;
+}
+```
+
+### Conditional
+```
+const a = 1;
+const b = 5;
+
+if (a > b) {
+  ...
+} 
+else if (b > a) {
+  ...
+}
+else {
+  ...
+}
+```
+
+### Functions
+```
+fn add(a: int, b: int) int {
+  return a + b;
+}
+```
+
 
 ## Building and Testing neo
 Building `neo` requires [meson](https://mesonbuild.com/SimpleStart.html) and [clang](https://clang.llvm.org/). The `neo` project also depends on the

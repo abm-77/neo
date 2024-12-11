@@ -117,35 +117,44 @@ TEST(Lexer, LexVariableDef) {
 }
 
 TEST(Lexer, LexArrayDef) {
-  auto L = Lexer::from_source("const a: int[3] = {1, 2, 3};");
+  auto L = Lexer::from_source("const a: [3]int = {1, 2, 3};");
   auto result = L.lex();
   auto expected = std::vector<std::pair<TokenType, std::string_view>>{
-      {TOKEN_CONST, ""},         {TOKEN_IDENTIFIER, "a"},
-      {TOKEN_COLON, ""},         {TOKEN_INT, ""},
-      {TOKEN_LEFT_BRACKET, ""},  {TOKEN_INTEGER_LITERAL, "3"},
-      {TOKEN_RIGHT_BRACKET, ""}, {TOKEN_EQUAL, ""},
-      {TOKEN_LEFT_BRACE, ""},    {TOKEN_INTEGER_LITERAL, "1"},
-      {TOKEN_COMMA, ""},         {TOKEN_INTEGER_LITERAL, "2"},
-      {TOKEN_COMMA, ""},         {TOKEN_INTEGER_LITERAL, "3"},
-      {TOKEN_RIGHT_BRACE, ""},   {TOKEN_SEMICOLON, ""},
+      {TOKEN_CONST, ""},
+      {TOKEN_IDENTIFIER, "a"},
+      {TOKEN_COLON, ""},
+      {TOKEN_LEFT_BRACKET, ""},
+      {TOKEN_INTEGER_LITERAL, "3"},
+      {TOKEN_RIGHT_BRACKET, ""},
+      {TOKEN_INT, ""},
+      {TOKEN_EQUAL, ""},
+      {TOKEN_LEFT_BRACE, ""},
+      {TOKEN_INTEGER_LITERAL, "1"},
+      {TOKEN_COMMA, ""},
+      {TOKEN_INTEGER_LITERAL, "2"},
+      {TOKEN_COMMA, ""},
+      {TOKEN_INTEGER_LITERAL, "3"},
+      {TOKEN_RIGHT_BRACE, ""},
+      {TOKEN_SEMICOLON, ""},
   };
   EXPECT_LIST(result, expected);
 }
 
 TEST(Lexer, LexFunction) {
-  auto input = "fn add(a: int) {"
+  auto input = "export fn add(a: int) int {"
                "return a + 10;"
                "}";
   auto L = Lexer::from_source(input);
   auto result = L.lex();
   auto expected = std::vector<std::pair<TokenType, std::string_view>>{
-      {TOKEN_FUNC, ""},        {TOKEN_IDENTIFIER, "add"},
-      {TOKEN_LEFT_PAREN, ""},  {TOKEN_IDENTIFIER, "a"},
-      {TOKEN_COLON, ""},       {TOKEN_INT, ""},
-      {TOKEN_RIGHT_PAREN, ""}, {TOKEN_LEFT_BRACE, ""},
-      {TOKEN_RETURN, ""},      {TOKEN_IDENTIFIER, "a"},
-      {TOKEN_PLUS, ""},        {TOKEN_INTEGER_LITERAL, "10"},
-      {TOKEN_SEMICOLON, ""},   {TOKEN_RIGHT_BRACE, ""},
+      {TOKEN_EXPORT, ""},        {TOKEN_FUNC, ""},
+      {TOKEN_IDENTIFIER, "add"}, {TOKEN_LEFT_PAREN, ""},
+      {TOKEN_IDENTIFIER, "a"},   {TOKEN_COLON, ""},
+      {TOKEN_INT, ""},           {TOKEN_RIGHT_PAREN, ""},
+      {TOKEN_INT, ""},           {TOKEN_LEFT_BRACE, ""},
+      {TOKEN_RETURN, ""},        {TOKEN_IDENTIFIER, "a"},
+      {TOKEN_PLUS, ""},          {TOKEN_INTEGER_LITERAL, "10"},
+      {TOKEN_SEMICOLON, ""},     {TOKEN_RIGHT_BRACE, ""},
   };
   EXPECT_LIST(result, expected);
 }
@@ -206,14 +215,14 @@ TEST(Lexer, LexIfChain) {
 }
 
 TEST(Lexer, LexForLoop) {
-  auto input = "for (int i = 0; i < 10; i += 1) {"
+  auto input = "for (var i = 0; i < 10; i += 1) {"
                "a[i] = i;"
                "}";
   auto L = Lexer::from_source(input);
   auto result = L.lex();
   auto expected = std::vector<std::pair<TokenType, std::string_view>>{
       {TOKEN_CTRL_FOR, ""},    {TOKEN_LEFT_PAREN, ""},
-      {TOKEN_INT, ""},         {TOKEN_IDENTIFIER, "i"},
+      {TOKEN_VAR, ""},         {TOKEN_IDENTIFIER, "i"},
       {TOKEN_EQUAL, ""},       {TOKEN_INTEGER_LITERAL, "0"},
       {TOKEN_SEMICOLON, ""},   {TOKEN_IDENTIFIER, "i"},
       {TOKEN_LESS, ""},        {TOKEN_INTEGER_LITERAL, "10"},

@@ -92,6 +92,8 @@ const char *token_type_to_string(TokenType type) {
     return "TOKEN_INT";
   case TOKEN_IMPORT:
     return "TOKEN_IMPORT";
+  case TOKEN_EXPORT:
+    return "TOKEN_EXPORT";
   case TOKEN_EXTERN:
     return "TOKEN_EXTERN";
   case TOKEN_STRUCT:
