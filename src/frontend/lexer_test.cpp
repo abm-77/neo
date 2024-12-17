@@ -76,6 +76,23 @@ TEST(Lexer, LexIntLiteralNegative) {
   EXPECT_EQ(result.get_int_data(token), input);
 }
 
+TEST(Lexer, LexString) {
+  auto input = "\"hello\"";
+  auto L = Lexer::from_source(input);
+  auto result = L.lex();
+  auto token = result.tokens.back();
+  EXPECT_EQ(token.type, TOKEN_STRING_LITERAL);
+  EXPECT_EQ(result.get_string_data(token), input);
+}
+
+TEST(Lexer, LexStringUnterminated) {
+  auto input = "\"hello";
+  auto L = Lexer::from_source(input);
+  auto result = L.lex();
+  auto token = result.tokens.back();
+  EXPECT_EQ(token.type, TOKEN_STRING_LITERAL_UNTERMINATED);
+}
+
 TEST(Lexer, LexBoolLiteralTrue) {
   auto L = Lexer::from_source("true");
   auto result = L.lex();

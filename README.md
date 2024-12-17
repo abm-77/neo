@@ -87,7 +87,7 @@ fn add(a: int, b: int) int {
 
 ## Building and Testing neo
 Building `neo` requires [meson](https://mesonbuild.com/SimpleStart.html) and [clang](https://clang.llvm.org/). The `neo` project also depends on the
-[GoogleTest](https://google.github.io/googletest/) for unit testing (this will be brought in by meson during build).
+[GoogleTest](https://google.github.io/googletest/) library for unit testing (this will be brought in by meson during build).
 Once you have the required dependencies, you can run the following commands:
 ```
 # compile project

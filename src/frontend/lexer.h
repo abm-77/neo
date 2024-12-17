@@ -11,7 +11,7 @@ namespace neo {
 namespace lex {
 
 // TokenType describes the type of a Token.
-enum TokenType {
+enum TokenType : u8 {
   // general tokens
   TOKEN_LEFT_PAREN,
   TOKEN_RIGHT_PAREN,
@@ -49,9 +49,12 @@ enum TokenType {
 
   // keywords
   TOKEN_VOID,
+  TOKEN_FLOAT,
+  TOKEN_INT,
+  TOKEN_COND_ELSE,
+  TOKEN_BOOL,
   TOKEN_CONST,
   TOKEN_VAR,
-  TOKEN_INT,
   TOKEN_IMPORT,
   TOKEN_EXPORT,
   TOKEN_EXTERN,
@@ -62,8 +65,6 @@ enum TokenType {
   TOKEN_CTRL_BREAK,
   TOKEN_CTRL_CONTINUE,
   TOKEN_COND_IF,
-  TOKEN_COND_ELSE,
-  TOKEN_BOOL,
   TOKEN_BOOL_OR,
   TOKEN_BOOL_AND,
   TOKEN_RETURN,
@@ -77,6 +78,7 @@ enum TokenType {
   TOKEN_IDENTIFIER,      // data points to string_data
   TOKEN_INTEGER_LITERAL, // data is bitcast to i32
   TOKEN_STRING_LITERAL,  // data is bitcast to i32
+  TOKEN_STRING_LITERAL_UNTERMINATED,
   TOKEN_BOOL_LITERAL,
 };
 
@@ -91,8 +93,7 @@ static std::unordered_map<std::string_view, TokenType> KEYWORDS{
     {"if", TOKEN_COND_IF},        {"else", TOKEN_COND_ELSE},
     {"or", TOKEN_BOOL_OR},        {"and", TOKEN_BOOL_AND},
     {"true", TOKEN_BOOL_LITERAL}, {"false", TOKEN_BOOL_LITERAL},
-    {"return", TOKEN_RETURN},
-};
+    {"return", TOKEN_RETURN},     {"float", TOKEN_FLOAT}};
 
 const char *token_type_to_string(TokenType type);
 
@@ -103,26 +104,40 @@ const char *token_type_to_string(TokenType type);
  * 1. Not used at all
  * 2. To be cast into a value of the same size (u32).
  * 3. As a pointer into the extra array within the lexer.
- *
  * */
 struct Token {
   TokenType type;
   u64 data;
 };
 
+/*
+ * Calling the lex function on an instance of Lexer will produce
+ * a LexerResult. This object stores all the tokens found during
+ * lexing and has some helpers for accessing extra data related
+ * to a token.
+ * */
 struct LexerResult {
   std::vector<Token> tokens;
   std::vector<std::string_view> string_data;
 
-  std::string_view get_string_data(Token token);
-  i64 get_int_data(Token token);
-  b32 get_bool_data(Token token);
+  std::string_view get_string_data(Token token) const;
+  i64 get_int_data(Token token) const;
+  b32 get_bool_data(Token token) const;
 };
 
+/*
+ * Lexer takes in an input of either a string or a file and
+ * will produce a LexerResult upon a user calling lex().
+ * */
 class Lexer {
 public:
+  // Create a lexer from a file source.
   static Lexer from_file(std::string_view filepath);
+
+  // Create a lexer from a string source.
   static Lexer from_source(std::string_view source);
+
+  // Lex the current source input.
   LexerResult lex();
 
 private:

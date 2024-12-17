@@ -126,6 +126,8 @@ const char *token_type_to_string(TokenType type) {
     return "TOKEN_INTEGER_LITERAL";
   case TOKEN_STRING_LITERAL:
     return "TOKEN_STRING_LITERAL";
+  case TOKEN_STRING_LITERAL_UNTERMINATED:
+    return "TOKEN_STRING_LITERAL_UNTERMINATED";
   case TOKEN_BOOL_LITERAL:
     return "TOKEN_BOOL_LITERAL";
   default:
@@ -133,15 +135,15 @@ const char *token_type_to_string(TokenType type) {
   }
 }
 
-std::string_view LexerResult::get_string_data(Token token) {
+std::string_view LexerResult::get_string_data(Token token) const {
   return string_data.at(token.data);
 }
 
-i64 LexerResult::get_int_data(Token token) {
+i64 LexerResult::get_int_data(Token token) const {
   return static_cast<i64>(token.data);
 }
 
-b32 LexerResult::get_bool_data(Token token) {
+b32 LexerResult::get_bool_data(Token token) const {
   return static_cast<b32>(token.data);
 }
 
@@ -209,6 +211,7 @@ std::string_view Lexer::get_src_slice() {
 Token Lexer::make_token(TokenType type) {
   u64 data = 0;
   switch (type) {
+  case TOKEN_STRING_LITERAL:
   case TOKEN_IDENTIFIER: {
     auto lexeme = get_src_slice();
     data = string_data.size();
@@ -268,9 +271,9 @@ Token Lexer::make_string() {
     }
   }
 
-  // TODO: handle unterminated string error
-  /*if (!terminated)*/
-  /*  return error.UNTERMINATED_STRING;*/
+  if (!terminated)
+    return make_token(TOKEN_STRING_LITERAL_UNTERMINATED);
+
   return make_token(TOKEN_STRING_LITERAL);
 }
 

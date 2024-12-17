@@ -1,4 +1,5 @@
 #pragma once
+#include <assert.h>
 #include <stdint.h>
 
 using b32 = bool;
@@ -26,4 +27,37 @@ struct SourceLocation {
 struct SourceSpan {
   SourceLocation start;
   SourceLocation end;
+};
+
+template <typename T> class Span {
+public:
+  using iterator = T *;
+  using const_iterator = const T *;
+
+  Span(T *data, u32 size) : data_(data), size_(size) {}
+  u32 size() const { return size_; }
+  bool empty() const { return size_ == 0; }
+
+  T &operator[](u32 index) {
+    assert(index < size_);
+    return data_[index];
+  }
+
+  const T &operator[](u32 index) const {
+    assert(index < size_);
+    return data_[index];
+  }
+
+  iterator begin() { return data_; }
+  iterator end() { return data_ + size_; }
+
+  const_iterator begin() const { return data_; }
+  const_iterator end() const { return data_ + size_; }
+
+  const_iterator cbegin() const { return data_; }
+  const_iterator cend() const { return data_ + size_; }
+
+private:
+  T *data_;
+  u32 size_;
 };
