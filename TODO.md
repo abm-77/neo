@@ -1,8 +1,15 @@
 TODO
 ====
 
-12/17/24
-- [ ] finish testing for while and for stmts
+12/21/24
+- [ ] parse function defs
+- [ ] parse function calls
+- [ ] parse array defs 
+- [ ] parse array accesses 
+
+12/20/24
+- [X] finish testing for while and for stmts
+- [X] refactor parser to decouple ast 
 
 12/16/24
 - [X] parse return stmts

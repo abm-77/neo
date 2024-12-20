@@ -74,7 +74,7 @@ enum TokenType : u8 {
   // For right now, since the only data that cannot fit in 64-bits are
   // identifiers, the extra data just holds strings.
   //
-  // liteals (tokens that have payloads)
+  // literals (tokens that have payloads)
   TOKEN_IDENTIFIER,      // data points to string_data
   TOKEN_INTEGER_LITERAL, // data is bitcast to i32
   TOKEN_STRING_LITERAL,  // data is bitcast to i32
@@ -94,8 +94,6 @@ static std::unordered_map<std::string_view, TokenType> KEYWORDS{
     {"or", TOKEN_BOOL_OR},        {"and", TOKEN_BOOL_AND},
     {"true", TOKEN_BOOL_LITERAL}, {"false", TOKEN_BOOL_LITERAL},
     {"return", TOKEN_RETURN},     {"float", TOKEN_FLOAT}};
-
-const char *token_type_to_string(TokenType type);
 
 /*
  * Token is is the unified type to represent tokens lexed from

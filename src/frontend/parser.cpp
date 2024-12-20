@@ -8,71 +8,56 @@
 namespace neo {
 namespace parse {
 
-using namespace ast_data;
-
-const char *node_type_to_string(AstNodeType type) {
-  switch (type) {
-  // statements
-  case AST_EXPR_STMT:
-    return "AST_EXPR_STMT";
-  case AST_VAR_DEF_STMT:
-    return "AST_VAR_DEF_STMT";
-  case AST_VAR_ASSIGN_STMT:
-    return "AST_VAR_ASSIGN_STMT";
-  case AST_BLK_STMT:
-    return "AST_BLK_STMT";
-  case AST_RET_STMT:
-    return "AST_RET_STMT";
-  case AST_IF_STMT:
-    return "AST_IF_STMT";
-  case AST_IF_CONDS:
-    return "AST_IF_CONDS";
-  case AST_IF_BLKS:
-    return "AST_IF_BLKS";
-  case AST_WHILE_STMT:
-    return "AST_WHILE_STMT";
-  case AST_FOR_STMT:
-    return "AST_FOR_STMT";
-  case AST_FN_DEF_STMT:
-    return "AST_FN_DEF_STMT";
-
-  // expressions
-  case AST_IDENT_EXPR:
-    return "AST_IDENT_EXPR";
-  case AST_INT_LIT_EXPR:
-    return "AST_INT_LIT_EXPR";
-  case AST_BOOL_LIT_EXPR:
-    return "AST_BOOL_LIT_EXPR";
-  case AST_STR_LIT_EXPR:
-    return "AST_STR_LIT_EXPR";
-  case AST_PREFIX_EXPR:
-    return "AST_PREFIX_EXPR";
-  case AST_INFIX_EXPR:
-    return "AST_INFIX_EXPR";
-  case AST_FN_CALL_EXPR:
-    return "AST_FN_CALL_EXPR";
-
-  default:
-    return "UNKNOWN_AST_NODE_TYPE";
-  }
+Ast::Ast() : data_offset(0), data_capacity(default_extra_capacity) {
+  data = static_cast<u8 *>(malloc(default_extra_capacity));
 }
 
-const char *type_to_string(Type type) {
-  switch (type) {
-  case TYPE_INT:
-    return "TYPE_INT";
-  case TYPE_FLOAT:
-    return "TYPE_FLOAT";
-  case TYPE_BOOL:
-    return "TYPE_BOOL";
-  case TYPE_VOID:
-    return "TYPE_VOID";
-  default:
-    return "UNKNOWN_TYPE";
+Ast::~Ast() { free(data); }
+
+const std::vector<Ast::Node> &Ast::tree() const { return _tree; };
+
+const Ast::Node &Ast::root() const { return _tree.back(); };
+
+const Ast::Node &Ast::at(i32 i) const { return _tree.at(i); };
+
+template <typename T> u32 Ast::alloc_data(T *src, u32 count) {
+  u32 offset = data_offset;
+  u32 size = sizeof(T) * count;
+
+  // TODO: handle case where size is > 2x the current capacity
+  if (data_offset + size > data_capacity) {
+    data_capacity *= 2;
+    data = static_cast<u8 *>(realloc(data, data_capacity));
   }
+  data_offset += size;
+
+  memcpy(data + offset, src, size);
+  return offset;
 }
 
-Precedence infix_precedence(TokenType token) {
+template <typename T> u32 Ast::alloc_data(T &src) {
+  u32 offset = data_offset;
+  u32 size = sizeof(T);
+
+  // TODO: handle case where size is > 2x the current capacity
+  if (data_offset + size > data_capacity) {
+    data_capacity *= 2;
+    data = static_cast<u8 *>(realloc(data, data_capacity));
+  }
+  data_offset += size;
+
+  memcpy(data + offset, &src, size);
+
+  return offset;
+}
+
+i32 Ast::make_node(Ast::NodeType type, i32 lhs, i32 rhs) {
+  i32 idx = _tree.size();
+  _tree.push_back(Ast::Node{type, lhs, rhs});
+  return idx;
+}
+
+Parser::Precedence Parser::infix_precedence(TokenType token) {
   switch (token) {
   case TOKEN_EQUAL:
     return PRECEDENCE_ASSIGN;
@@ -97,13 +82,8 @@ Precedence infix_precedence(TokenType token) {
   }
 }
 
-Parser::Parser(const LexerResult &lex_res)
-    : lexer_result(std::move(lex_res)), token_idx(0), extra_offset(0),
-      extra_capacity(default_extra_capacity) {
-  extra = static_cast<u8 *>(malloc(default_extra_capacity));
-}
-
-Parser::~Parser() { free(extra); }
+Parser::Parser(Ast &ast, const LexerResult &lex_res)
+    : ast(ast), token_idx(0), lexer_result(std::move(lex_res)) {}
 
 TokenType Parser::peek() {
   return (token_idx < lexer_result.tokens.size())
@@ -158,65 +138,28 @@ std::optional<Type> Parser::consume_type() {
   }
 }
 
-template <typename T> u32 Parser::alloc_data(T *data, u32 count) {
-  u32 offset = extra_offset;
-  u32 size = sizeof(T) * count;
-
-  // TODO: handle case where size is > 2x the current capacity
-  if (extra_offset + size > extra_capacity) {
-    extra_capacity *= 2;
-    extra = static_cast<u8 *>(realloc(extra, extra_capacity));
-  }
-  extra_offset += size;
-
-  memcpy(extra + offset, data, size);
-  return offset;
-}
-
-template <typename T> u32 Parser::alloc_data(T &data) {
-  u32 offset = extra_offset;
-  u32 size = sizeof(T);
-
-  // TODO: handle case where size is > 2x the current capacity
-  if (extra_offset + size > extra_capacity) {
-    extra_capacity *= 2;
-    extra = static_cast<u8 *>(realloc(extra, extra_capacity));
-  }
-  extra_offset += size;
-
-  memcpy(extra + offset, &data, size);
-
-  return offset;
-}
-
-i32 Parser::make_node(AstNodeType type, i32 lhs, i32 rhs) {
-  i32 idx = ast.size();
-  ast.push_back(AstNode{type, lhs, rhs});
-  return idx;
-}
-
 i32 Parser::parse_ident_expr() {
   auto ident = consume_ident();
   if (ident.has_value()) {
-    u32 ident_data = alloc_data(ident.value());
-    return make_node(AST_IDENT_EXPR, ident_data, 0);
+    u32 ident_data = ast.alloc_data(ident.value());
+    return ast.make_node(Ast::AST_IDENT_EXPR, ident_data, 0);
   } else {
-    return NULL_NODE;
+    return Ast::NULL_NODE;
   }
 }
 
 i32 Parser::parse_int_lit_expr() {
   auto data = consume_int_literal();
-  return (data.has_value())
-             ? make_node(AST_INT_LIT_EXPR, data.value(), NULL_NODE)
-             : NULL_NODE;
+  return (data.has_value()) ? ast.make_node(Ast::AST_INT_LIT_EXPR, data.value(),
+                                            Ast::NULL_NODE)
+                            : Ast::NULL_NODE;
 }
 
 i32 Parser::parse_bool_lit_expr() {
   auto data = consume_bool_literal();
-  return (data.has_value())
-             ? make_node(AST_BOOL_LIT_EXPR, data.value(), NULL_NODE)
-             : NULL_NODE;
+  return (data.has_value()) ? ast.make_node(Ast::AST_BOOL_LIT_EXPR,
+                                            data.value(), Ast::NULL_NODE)
+                            : Ast::NULL_NODE;
 }
 
 i32 Parser::parse_infix_expr(i32 lhs) {
@@ -224,8 +167,8 @@ i32 Parser::parse_infix_expr(i32 lhs) {
   auto precedence = infix_precedence(op);
   consume(op);
   i32 rhs = parse_expr(precedence);
-  AstInfixData data = {.op = op, .rhs = rhs};
-  return make_node(AST_INFIX_EXPR, lhs, alloc_data(data));
+  Ast::InfixData data = {.op = op, .rhs = rhs};
+  return ast.make_node(Ast::AST_INFIX_EXPR, lhs, ast.alloc_data(data));
 }
 
 i32 Parser::parse_grouped_expr() {
@@ -238,9 +181,9 @@ i32 Parser::parse_grouped_expr() {
 i32 Parser::parse_prefix_expr() {
   auto prefix = peek();
   consume(prefix);
-  AstPrefixData data = {.prefix = prefix};
-  return make_node(AST_PREFIX_EXPR, parse_expr(PRECEDENCE_PREFIX),
-                   alloc_data(data));
+  Ast::PrefixData data = {.prefix = prefix};
+  return ast.make_node(Ast::AST_PREFIX_EXPR, parse_expr(PRECEDENCE_PREFIX),
+                       ast.alloc_data(data));
 }
 
 i32 Parser::parse_expr(Precedence precedence) {
@@ -265,11 +208,11 @@ i32 Parser::parse_expr(Precedence precedence) {
   } break;
 
   default:
-    lhs = NULL_NODE;
+    lhs = Ast::NULL_NODE;
   }
 
-  if (lhs == NULL_NODE)
-    return NULL_NODE;
+  if (lhs == Ast::NULL_NODE)
+    return Ast::NULL_NODE;
 
   // infix
   while (!peek_is(TOKEN_SEMICOLON) && precedence < infix_precedence(peek())) {
@@ -294,10 +237,10 @@ i32 Parser::parse_expr(Precedence precedence) {
     /*  infix = parse_call_expr(lhs);*/
     /*  break;*/
     default:
-      infix = NULL_NODE;
+      infix = Ast::NULL_NODE;
     }
 
-    if (infix == NULL_NODE)
+    if (infix == Ast::NULL_NODE)
       return lhs;
     lhs = infix;
   }
@@ -309,7 +252,7 @@ i32 Parser::parse_return_stmt() {
   consume(lex::TOKEN_RETURN);
   auto expr = parse_expr(PRECEDENCE_LOWEST);
   consume(lex::TOKEN_SEMICOLON);
-  return make_node(AST_RET_STMT, expr, NULL_NODE);
+  return ast.make_node(Ast::AST_RET_STMT, expr, Ast::NULL_NODE);
 }
 
 i32 Parser::parse_if_stmt() {
@@ -337,13 +280,15 @@ i32 Parser::parse_if_stmt() {
   if (has_default)
     blks.push_back(parse_blk_stmt());
 
-  auto ast_conds = make_node(
-      AST_IF_CONDS, alloc_data<i32>(conds.data(), conds.size()), conds.size());
+  auto ast_conds = ast.make_node(
+      Ast::AST_IF_CONDS, ast.alloc_data<i32>(conds.data(), conds.size()),
+      conds.size());
 
-  auto ast_blks = make_node(
-      AST_IF_BLKS, alloc_data<i32>(blks.data(), blks.size()), blks.size());
+  auto ast_blks =
+      ast.make_node(Ast::AST_IF_BLKS,
+                    ast.alloc_data<i32>(blks.data(), blks.size()), blks.size());
 
-  return make_node(AST_IF_STMT, ast_conds, ast_blks);
+  return ast.make_node(Ast::AST_IF_STMT, ast_conds, ast_blks);
 }
 
 i32 Parser::parse_for_stmt() {
@@ -354,8 +299,8 @@ i32 Parser::parse_for_stmt() {
   auto cont = parse_expr(PRECEDENCE_LOWEST);
   consume(lex::TOKEN_RIGHT_PAREN);
   auto blk = parse_blk_stmt();
-  AstForData data = {.cond = cond, .cont = cont, .blk = blk};
-  return make_node(AST_FOR_STMT, init, alloc_data(data));
+  Ast::ForData data = {.cond = cond, .cont = cont, .blk = blk};
+  return ast.make_node(Ast::AST_FOR_STMT, init, ast.alloc_data(data));
 }
 
 i32 Parser::parse_while_stmt() {
@@ -364,7 +309,7 @@ i32 Parser::parse_while_stmt() {
   auto cond = parse_expr(PRECEDENCE_LOWEST);
   consume(lex::TOKEN_RIGHT_PAREN);
   auto blk = parse_blk_stmt();
-  return make_node(AST_WHILE_STMT, cond, blk);
+  return ast.make_node(Ast::AST_WHILE_STMT, cond, blk);
 }
 
 i32 Parser::parse_var_def_stmt() {
@@ -388,9 +333,9 @@ i32 Parser::parse_var_def_stmt() {
   i32 expr = parse_expr(PRECEDENCE_LOWEST);
   consume(lex::TOKEN_SEMICOLON);
 
-  AstVarDefData data = {
+  Ast::VarDefData data = {
       .type = type.value(), .value = expr, .is_const = is_const};
-  return make_node(AST_VAR_DEF_STMT, ident, alloc_data(data));
+  return ast.make_node(Ast::AST_VAR_DEF_STMT, ident, ast.alloc_data(data));
 }
 
 i32 Parser::parse_blk_stmt() {
@@ -401,13 +346,14 @@ i32 Parser::parse_blk_stmt() {
     stmts.push_back(statement);
   }
   consume(lex::TOKEN_RIGHT_BRACE);
-  return make_node(AST_BLK_STMT, alloc_data<i32>(stmts.data(), stmts.size()),
-                   stmts.size());
+  return ast.make_node(Ast::AST_BLK_STMT,
+                       ast.alloc_data<i32>(stmts.data(), stmts.size()),
+                       stmts.size());
 }
 
 i32 Parser::parse_expr_stmt() {
   i32 expr = parse_expr(PRECEDENCE_LOWEST);
-  i32 idx = make_node(AST_EXPR_STMT, expr, 0);
+  i32 idx = ast.make_node(Ast::AST_EXPR_STMT, expr, 0);
   consume(lex::TOKEN_SEMICOLON);
   return idx;
 }
@@ -434,13 +380,15 @@ i32 Parser::parse_statement() {
   }
 }
 
-std::vector<AstNode> Parser::parse() {
-  while (token_idx < lexer_result.tokens.size()) {
-    parse_statement();
+Ast Parser::parse(const LexerResult &lex_result) {
+  Ast A;
+
+  Parser P(A, lex_result);
+  while (P.token_idx < P.lexer_result.tokens.size()) {
+    P.parse_statement();
   }
-  return ast;
+  return A;
 }
 
 } // namespace parse
-
 } // namespace neo

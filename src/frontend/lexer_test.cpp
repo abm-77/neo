@@ -1,4 +1,6 @@
 #include "lexer.h"
+#include "util.h"
+
 #include <gtest/gtest.h>
 #include <string>
 #include <string_view>
@@ -30,9 +32,13 @@ EXPECT_LIST(LexerResult &result,
   }
 }
 
+LexerResult lex_input(std::string_view input) {
+  auto L = Lexer::from_source(input);
+  return L.lex();
+}
+
 TEST(Lexer, LexImport) {
-  auto L = Lexer::from_source("import fmt;");
-  auto result = L.lex();
+  auto result = lex_input("import fmt;");
   auto expected = std::vector<std::pair<TokenType, std::string_view>>{
       {TOKEN_IMPORT, ""},
       {TOKEN_IDENTIFIER, "fmt"},
@@ -42,8 +48,7 @@ TEST(Lexer, LexImport) {
 }
 TEST(Lexer, LexIdentifier) {
   auto input = "hello";
-  auto L = Lexer::from_source(input);
-  auto result = L.lex();
+  auto result = lex_input(input);
   auto token = result.tokens.back();
   EXPECT_EQ(token.type, TOKEN_IDENTIFIER);
   EXPECT_EQ(result.get_string_data(token), input);
@@ -51,8 +56,7 @@ TEST(Lexer, LexIdentifier) {
 
 TEST(Lexer, LexIdentifierComplex) {
   auto input = "_h3ll0_w0rld_";
-  auto L = Lexer::from_source(input);
-  auto result = L.lex();
+  auto result = lex_input(input);
   auto token = result.tokens.back();
   EXPECT_EQ(token.type, TOKEN_IDENTIFIER);
   EXPECT_EQ(result.get_string_data(token), input);
@@ -60,8 +64,7 @@ TEST(Lexer, LexIdentifierComplex) {
 
 TEST(Lexer, LexIntLiteralPositive) {
   auto input = 12345;
-  auto L = Lexer::from_source(std::to_string(input));
-  auto result = L.lex();
+  auto result = lex_input(std::to_string(input));
   auto token = result.tokens.back();
   EXPECT_EQ(token.type, TOKEN_INTEGER_LITERAL);
   EXPECT_EQ(result.get_int_data(token), input);
@@ -69,8 +72,7 @@ TEST(Lexer, LexIntLiteralPositive) {
 
 TEST(Lexer, LexIntLiteralNegative) {
   auto input = -12345;
-  auto L = Lexer::from_source(std::to_string(input));
-  auto result = L.lex();
+  auto result = lex_input(std::to_string(input));
   auto token = result.tokens.back();
   EXPECT_EQ(token.type, TOKEN_INTEGER_LITERAL);
   EXPECT_EQ(result.get_int_data(token), input);
@@ -78,8 +80,7 @@ TEST(Lexer, LexIntLiteralNegative) {
 
 TEST(Lexer, LexString) {
   auto input = "\"hello\"";
-  auto L = Lexer::from_source(input);
-  auto result = L.lex();
+  auto result = lex_input(input);
   auto token = result.tokens.back();
   EXPECT_EQ(token.type, TOKEN_STRING_LITERAL);
   EXPECT_EQ(result.get_string_data(token), input);
@@ -87,31 +88,27 @@ TEST(Lexer, LexString) {
 
 TEST(Lexer, LexStringUnterminated) {
   auto input = "\"hello";
-  auto L = Lexer::from_source(input);
-  auto result = L.lex();
+  auto result = lex_input(input);
   auto token = result.tokens.back();
   EXPECT_EQ(token.type, TOKEN_STRING_LITERAL_UNTERMINATED);
 }
 
 TEST(Lexer, LexBoolLiteralTrue) {
-  auto L = Lexer::from_source("true");
-  auto result = L.lex();
+  auto result = lex_input("true");
   auto token = result.tokens.back();
   EXPECT_EQ(token.type, TOKEN_BOOL_LITERAL);
   EXPECT_EQ(result.get_bool_data(token), true);
 }
 
 TEST(Lexer, LexBoolLiteralFalse) {
-  auto L = Lexer::from_source("false");
-  auto result = L.lex();
+  auto result = lex_input("false");
   auto token = result.tokens.back();
   EXPECT_EQ(token.type, TOKEN_BOOL_LITERAL);
   EXPECT_EQ(result.get_bool_data(token), false);
 }
 
 TEST(Lexer, LexConstantDef) {
-  auto L = Lexer::from_source("const a: int = 10;");
-  auto result = L.lex();
+  auto result = lex_input("const a: int = 10;");
   auto expected = std::vector<std::pair<TokenType, std::string_view>>{
       {TOKEN_CONST, ""},     {TOKEN_IDENTIFIER, "a"},
       {TOKEN_COLON, ""},     {TOKEN_INT, ""},
@@ -122,8 +119,7 @@ TEST(Lexer, LexConstantDef) {
 }
 
 TEST(Lexer, LexVariableDef) {
-  auto L = Lexer::from_source("var a: int = 10;");
-  auto result = L.lex();
+  auto result = lex_input("var a: int = 10;");
   auto expected = std::vector<std::pair<TokenType, std::string_view>>{
       {TOKEN_VAR, ""},       {TOKEN_IDENTIFIER, "a"},
       {TOKEN_COLON, ""},     {TOKEN_INT, ""},
@@ -134,8 +130,7 @@ TEST(Lexer, LexVariableDef) {
 }
 
 TEST(Lexer, LexArrayDef) {
-  auto L = Lexer::from_source("const a: [3]int = {1, 2, 3};");
-  auto result = L.lex();
+  auto result = lex_input("const a: [3]int = {1, 2, 3};");
   auto expected = std::vector<std::pair<TokenType, std::string_view>>{
       {TOKEN_CONST, ""},
       {TOKEN_IDENTIFIER, "a"},
@@ -158,11 +153,9 @@ TEST(Lexer, LexArrayDef) {
 }
 
 TEST(Lexer, LexFunction) {
-  auto input = "export fn add(a: int) int {"
-               "return a + 10;"
-               "}";
-  auto L = Lexer::from_source(input);
-  auto result = L.lex();
+  auto result = lex_input("export fn add(a: int) int {"
+                          "return a + 10;"
+                          "}");
   auto expected = std::vector<std::pair<TokenType, std::string_view>>{
       {TOKEN_EXPORT, ""},        {TOKEN_FUNC, ""},
       {TOKEN_IDENTIFIER, "add"}, {TOKEN_LEFT_PAREN, ""},
@@ -177,17 +170,15 @@ TEST(Lexer, LexFunction) {
 }
 
 TEST(Lexer, LexIfChain) {
-  auto input = "if(a > 5) {"
-               "return a * 10;"
-               "}"
-               "else if (a % 3 == 0){"
-               "return a / -13;"
-               "}"
-               "else{"
-               "return -a - 10;"
-               "}";
-  auto L = Lexer::from_source(input);
-  auto result = L.lex();
+  auto result = lex_input("if(a > 5) {"
+                          "return a * 10;"
+                          "}"
+                          "else if (a % 3 == 0){"
+                          "return a / -13;"
+                          "}"
+                          "else{"
+                          "return -a - 10;"
+                          "}");
   auto expected = std::vector<std::pair<TokenType, std::string_view>>{
       {TOKEN_COND_IF, ""},
       {TOKEN_LEFT_PAREN, ""},
@@ -232,11 +223,9 @@ TEST(Lexer, LexIfChain) {
 }
 
 TEST(Lexer, LexForLoop) {
-  auto input = "for (var i = 0; i < 10; i += 1) {"
-               "a[i] = i;"
-               "}";
-  auto L = Lexer::from_source(input);
-  auto result = L.lex();
+  auto result = lex_input("for (var i = 0; i < 10; i += 1) {"
+                          "a[i] = i;"
+                          "}");
   auto expected = std::vector<std::pair<TokenType, std::string_view>>{
       {TOKEN_CTRL_FOR, ""},    {TOKEN_LEFT_PAREN, ""},
       {TOKEN_VAR, ""},         {TOKEN_IDENTIFIER, "i"},
@@ -255,11 +244,9 @@ TEST(Lexer, LexForLoop) {
 }
 
 TEST(Lexer, LexWhileLoop) {
-  auto input = "while (i < 10) {"
-               "continue;"
-               "}";
-  auto L = Lexer::from_source(input);
-  auto result = L.lex();
+  auto result = lex_input("while (i < 10) {"
+                          "continue;"
+                          "}");
   auto expected = std::vector<std::pair<TokenType, std::string_view>>{
       {TOKEN_CTRL_WHILE, ""},        {TOKEN_LEFT_PAREN, ""},
       {TOKEN_IDENTIFIER, "i"},       {TOKEN_LESS, ""},
