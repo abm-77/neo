@@ -1,14 +1,20 @@
-TODO
+LOG
 ====
 
+12/22/24
+- [ ] parse variable assignments
+
 12/21/24
-- [ ] parse function defs
-- [ ] parse function calls
-- [ ] parse array defs 
-- [ ] parse array accesses 
+- [X] finish testing for for stmts
+- [X] parse function defs
+- [X] parse function calls
+- [X] parse array literals 
+- [X] parse array variable defs 
+- [X] parse array accesses 
+- [X] revamp type representation
 
 12/20/24
-- [X] finish testing for while and for stmts
+- [X] finish testing for while stmts
 - [X] refactor parser to decouple ast 
 
 12/16/24

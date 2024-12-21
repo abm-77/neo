@@ -43,8 +43,12 @@ const neq = a != b;
 
 ### Arrays
 ```
-const a: [4]int = {1, 2, 3, 4};
-const b: int = a[2]; # b = 3
+const a: [4]int = [4]int{1, 2, 3, 4};
+const b = a[2]; # b = 3
+const c = [4]int{1, 2, 3, 4};
+const d = [4]int{}; # allocates array for 4 ints
+const e = []int{1, 2, 3, 4}; # infers array size is 4
+const f = [2][2]int{ []int{0,1}, []int{2,3} };
 ```
 
 ### Loops

@@ -131,7 +131,7 @@ static const char *token_type_to_string(TokenType type) {
 
 namespace parse {
 [[maybe_unused]]
-static const char *type_to_string(Type type) {
+static const char *type_to_string(ValueType type) {
   switch (type) {
   case TYPE_INT:
     return "TYPE_INT";
@@ -156,8 +156,10 @@ static const char *node_type_to_string(Ast::NodeType type) {
     return "Ast::AST_VAR_DEF_STMT";
   case Ast::AST_VAR_ASSIGN_STMT:
     return "Ast::AST_VAR_ASSIGN_STMT";
-  case Ast::AST_BLK_STMT:
-    return "Ast::AST_BLK_STMT";
+  case Ast::AST_SPAN:
+    return "Ast::AST_SPAN";
+  case Ast::AST_TYPE:
+    return "Ast::AST_TYPE";
   case Ast::AST_RET_STMT:
     return "Ast::AST_RET_STMT";
   case Ast::AST_IF_STMT:
