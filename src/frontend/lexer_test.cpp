@@ -1,5 +1,5 @@
-#include "lexer.h"
-#include "util.h"
+#include <frontend/lexer.h>
+#include <frontend/util.h>
 
 #include <gtest/gtest.h>
 #include <string>

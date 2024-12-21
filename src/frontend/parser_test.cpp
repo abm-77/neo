@@ -1,6 +1,6 @@
-#include "lexer.h"
-#include "parser.h"
-#include "util.h"
+#include <frontend/lexer.h>
+#include <frontend/parser.h>
+#include <frontend/util.h>
 
 #include <gtest/gtest.h>
 #include <ostream>
@@ -146,6 +146,23 @@ TEST(Parser, ParseVarDefStmtBool) {
   EXPECT_EQ(value, true);
 }
 
+TEST(Parser, ParseVarAssign) {
+  auto ast = parse_input("a /= 2;");
+  auto expr_stmt = ast.root();
+  EXPECT_EQ(expr_stmt.type, Ast::AST_EXPR_STMT);
+
+  auto infix_expr = ast.at(expr_stmt.lhs);
+  std::cout << node_type_to_string(infix_expr.type) << std::endl;
+  EXPECT_EQ(infix_expr.type, Ast::AST_INFIX_EXPR);
+  EXPECT_EQ(ast.get<Ast::StringData>(ast.at(infix_expr.lhs)), "a");
+
+  auto infix_data = ast.get<Ast::InfixData>(infix_expr);
+  EXPECT_EQ(infix_data.op, TOKEN_SLASH_EQUAL);
+
+  auto rhs = ast.get<Ast::IntLitData>(ast.at(infix_data.rhs));
+  EXPECT_EQ(rhs, 2);
+}
+
 TEST(Parser, ParsePrefixGroupedExpr) {
   auto ast = parse_input("var a: int = -(b + c);");
 
@@ -267,7 +284,6 @@ TEST(Parser, ParseWhileStmt) {
 
 TEST(Parser, ParseForStmt) {
   auto ast = parse_input("for (var i: int = 0; i < 10; i += 1) { 0; } ");
-  debug_print_ast(ast);
 
   auto for_stmt = ast.root();
   EXPECT_EQ(for_stmt.type, Ast::AST_FOR_STMT);
@@ -454,10 +470,10 @@ TEST(Parser, ParseArrLitNested) {
   }
 }
 
-// TEST(Parser, ParseArrayAccessExpr) {
-//   auto ast = parse_input("a[3];");
-//   auto arr_index_expr = ast.at(ast.root().lhs);
-//   EXPECT_EQ(arr_index_expr.type, Ast::AST_ARR_INDEX_EXPR);
-//   EXPECT_EQ(ast.get<Ast::StringData>(arr_index_expr), "a");
-//   EXPECT_EQ(arr_index_expr.rhs, 3);
-// }
+TEST(Parser, ParseArrayAccessExpr) {
+  auto ast = parse_input("a[3];");
+  auto arr_index_expr = ast.at(ast.root().lhs);
+  EXPECT_EQ(arr_index_expr.type, Ast::AST_ARR_INDEX_EXPR);
+  EXPECT_EQ(ast.get<Ast::StringData>(arr_index_expr), "a");
+  EXPECT_EQ(arr_index_expr.rhs, 3);
+}

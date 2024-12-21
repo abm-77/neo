@@ -1,7 +1,7 @@
 #pragma once
 
 #include "../common/types.h"
-#include "src/frontend/lexer.h"
+#include "lexer.h"
 
 #include <string_view>
 #include <vector>
@@ -34,16 +34,15 @@ public:
   // NodeType describes the type of Ast node.
   enum NodeType : u8 {
     // statements
-    AST_EXPR_STMT,       // lhs = expr
-    AST_VAR_DEF_STMT,    // lhs = ident, rhs -> { value, type, is_const }
-    AST_VAR_ASSIGN_STMT, // lhs = ident, rhs = value
-    AST_RET_STMT,        // lhs = return value
-    AST_IF_STMT,         // lhs -> conds, rhs -> blks
-    AST_IF_CONDS,        // lhs -> conds begin, rhs = conds length
-    AST_IF_BLKS,         // lhs -> blks begin, rhs = blks length
-    AST_WHILE_STMT,      // lhs = cond, rhs = blk
-    AST_FOR_STMT,        // lhs = init, rhs -> { cond, cont, blk }
-    AST_FN_DEF_STMT,     // lhs = name, rhs -> { params, blk }
+    AST_EXPR_STMT,    // lhs = expr
+    AST_VAR_DEF_STMT, // lhs = ident, rhs -> { value, type, is_const }
+    AST_RET_STMT,     // lhs = return value
+    AST_IF_STMT,      // lhs -> conds, rhs -> blks
+    AST_IF_CONDS,     // lhs -> conds begin, rhs = conds length
+    AST_IF_BLKS,      // lhs -> blks begin, rhs = blks length
+    AST_WHILE_STMT,   // lhs = cond, rhs = blk
+    AST_FOR_STMT,     // lhs = init, rhs -> { cond, cont, blk }
+    AST_FN_DEF_STMT,  // lhs = name, rhs -> { params, blk }
 
     // expressions
     AST_IDENT_EXPR,     // lhs -> { lexeme }
@@ -233,6 +232,7 @@ private:
   Ast::NodePtr parse_infix_expr(Ast::NodePtr lhs);
   Ast::NodePtr parse_func_call_expr(Ast::NodePtr fn);
   Ast::NodePtr parse_arr_index_expr(Ast::NodePtr arr);
+  Ast::NodePtr parse_var_assign_expr(Ast::NodePtr var);
 
   Precedence infix_precedence(TokenType token);
 

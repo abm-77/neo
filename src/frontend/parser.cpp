@@ -1,5 +1,6 @@
-#include "parser.h"
-#include "src/frontend/lexer.h"
+#include <frontend/lexer.h>
+#include <frontend/parser.h>
+
 #include <cstdlib>
 #include <optional>
 #include <string.h>
@@ -220,9 +221,8 @@ Ast::NodePtr Parser::parse_arr_index_expr(Ast::NodePtr arr) {
 }
 
 Ast::NodePtr Parser::parse_infix_expr(Ast::NodePtr lhs) {
-  auto op = peek();
+  auto op = next_token().type;
   auto precedence = infix_precedence(op);
-  consume(op);
   Ast::NodePtr rhs = parse_expr(precedence);
   Ast::InfixData data = {.op = op, .rhs = rhs};
   return ast.make_node(Ast::AST_INFIX_EXPR, lhs, ast.alloc_data(data));
@@ -284,12 +284,14 @@ Ast::NodePtr Parser::parse_expr(Precedence precedence) {
     Ast::NodePtr infix;
     switch (peek()) {
     case TOKEN_EQUAL:
-    case TOKEN_PLUS_EQUAL:
-    case TOKEN_MINUS_EQUAL:
     case TOKEN_PLUS:
     case TOKEN_MINUS:
     case TOKEN_SLASH:
     case TOKEN_STAR:
+    case TOKEN_PLUS_EQUAL:
+    case TOKEN_MINUS_EQUAL:
+    case TOKEN_SLASH_EQUAL:
+    case TOKEN_STAR_EQUAL:
     case TOKEN_EQUAL_EQUAL:
     case TOKEN_BANG_EQUAL:
     case TOKEN_GREATER_EQUAL:

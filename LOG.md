@@ -2,7 +2,7 @@ LOG
 ====
 
 12/22/24
-- [ ] parse variable assignments
+- [ ] design ir
 
 12/21/24
 - [X] finish testing for for stmts

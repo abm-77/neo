@@ -154,8 +154,6 @@ static const char *node_type_to_string(Ast::NodeType type) {
     return "Ast::AST_EXPR_STMT";
   case Ast::AST_VAR_DEF_STMT:
     return "Ast::AST_VAR_DEF_STMT";
-  case Ast::AST_VAR_ASSIGN_STMT:
-    return "Ast::AST_VAR_ASSIGN_STMT";
   case Ast::AST_SPAN:
     return "Ast::AST_SPAN";
   case Ast::AST_TYPE:

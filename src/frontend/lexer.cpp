@@ -1,5 +1,6 @@
-#include "lexer.h"
-#include "src/common/types.h"
+#include <common/types.h>
+#include <frontend/lexer.h>
+
 #include <cctype>
 #include <filesystem>
 #include <fstream>
