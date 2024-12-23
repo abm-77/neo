@@ -48,6 +48,8 @@ public:
     return data_[index];
   }
 
+  T &back() const { return data_[size_ - 1]; }
+
   iterator begin() { return data_; }
   iterator end() { return data_ + size_; }
 

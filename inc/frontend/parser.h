@@ -3,6 +3,7 @@
 #include "../common/types.h"
 #include "lexer.h"
 
+#include <optional>
 #include <string_view>
 #include <vector>
 
@@ -10,17 +11,6 @@ namespace neo {
 namespace parse {
 
 using namespace lex;
-
-/*
- * ValueType describes the type of a value. Expressions in Neo evaluate to a
- * value with some Type.
- **/
-enum ValueType : u8 {
-  TYPE_VOID,
-  TYPE_INT,
-  TYPE_BOOL,
-  TYPE_FLOAT,
-};
 
 /*
  * Ast represents an abstract syntax tree. This is a read only data structure
@@ -51,13 +41,12 @@ public:
     AST_STR_LIT_EXPR,   // lhs -> { string }
     AST_ARR_LIT_EXPR,   // lhs = size, rhs -> { type, init_list }
     AST_ARR_INDEX_EXPR, // lhs = ident, rhs = index
-    AST_PREFIX_EXPR,    // lhs = value, rhs -> { prefix }
+    AST_PREFIX_EXPR,    // lhs = value, rhs prefix
     AST_INFIX_EXPR,     // lhs = lhs (of binop), rhs -> { op, rhs }
     AST_FN_CALL_EXPR,   // lhs = name, rhs = args
 
     // Misc
     AST_SPAN, // encodes list of data, lhs -> offset, rhs = length
-    AST_TYPE  // encodes type of value, lhs = type, rhs -> { type_data }
   };
 
   /*
@@ -75,18 +64,60 @@ public:
     NodePtr rhs;
   };
 
+  /*
+   * Type describes the type of a value within the AST. Types can be of kinds
+   * primitive, array, struct, or pointer. At the limit, all types are composed
+   * of primitive types.
+   * */
+  struct Type {
+    enum PrimitiveType : u8 {
+      VOID,
+      INT,
+      BOOL,
+      FLOAT,
+      N_PRIM_TYPES,
+    };
+
+    enum Kind {
+      PRIMITIVE,
+      ARRAY,
+      STRUCT,
+      POINTER,
+    };
+
+    // Construct a composite type.
+    Type(Kind kind, NodePtr el_type = NULL_NODE, u32 array_size = 0)
+        : kind(kind), primitive_type(std::nullopt), el_type(el_type),
+          array_size(array_size) {}
+
+    // Construct a primitive type.
+    Type(PrimitiveType type, u32 array_size = 0)
+        : kind(PRIMITIVE), primitive_type(type), el_type(-1),
+          array_size(array_size) {}
+
+    Kind kind;
+    std::optional<PrimitiveType> primitive_type;
+    NodePtr el_type;
+    u32 array_size;
+  };
+
   // Used to describe an empty or invalid AST node.
   static constexpr NodePtr NULL_NODE = -1;
 
 public:
   using IntLitData = i32;
   using BoolLitData = b32;
+  struct ArrayLitData {
+    NodePtr type;
+    i32 init_list;
+  };
+
   using StringData = std::string_view;
 
   template <typename T> using ArrayData = Span<T>;
 
   struct VarDefData {
-    i32 type;
+    NodePtr type;
     i32 value;
     b32 is_const;
   };
@@ -94,10 +125,6 @@ public:
   struct InfixData {
     TokenType op;
     i32 rhs;
-  };
-
-  struct PrefixData {
-    TokenType prefix;
   };
 
   struct ForData {
@@ -109,26 +136,12 @@ public:
   struct FuncDefData {
     struct FuncParam {
       i32 ident;
-      i32 type;
+      NodePtr type;
     };
 
-    i32 ret_type;
+    NodePtr ret_type;
     i32 params;
     i32 blk;
-  };
-
-  struct ArrayLitData {
-    i32 type;
-    i32 init_list;
-  };
-
-  struct TypeData {
-    enum MetaType {
-      SCALAR,
-      ARRAY,
-      PTR,
-    };
-    MetaType meta_type;
   };
 
 public:
@@ -164,11 +177,20 @@ public:
     return *reinterpret_cast<StringData *>(data + node.lhs);
   }
 
+  const std::vector<Ast::NodePtr> &stmts() const;
+
+  void add_stmt(NodePtr stmt);
+
+  Ast::Type get_type(u32 idx);
+  NodePtr register_type(Ast::Type type);
+
 private:
   u8 *data;
   u32 data_offset;
   u32 data_capacity;
   std::vector<Node> tree_;
+  std::vector<Ast::NodePtr> stmts_;
+  std::vector<Ast::Type> types;
 
 private:
   static constexpr u32 default_extra_capacity = 4096;
@@ -180,7 +202,7 @@ private:
  * */
 class Parser {
 public:
-  // Create an AST from a LexerResult. Caller owns data.
+  // Create an Program from a LexerResult. Caller owns data.
   static Ast parse(const LexerResult &lex_res);
 
 private:

@@ -14,6 +14,7 @@ frontend_src = files(
 )
 
 ir_src = files(
+  'src/ir/ir.cpp',
   'src/ir/irgen.cpp',
 )
 
@@ -36,7 +37,7 @@ test('frontend', frontend_test_exec)
 
 
 ir_test_src = files(
-  'src/ir/irgen_test.cpp',
+  'src/ir/ir_test.cpp',
 )
 ir_test_exec = executable(
   'ir',

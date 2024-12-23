@@ -1,8 +1,17 @@
 LOG
 ====
 
-12/22/24
-- [ ] design ir
+12/22/24 - 12/23/24
+- [X] design ir
+- [X] implement ir backend ops
+- [X] implement primitive literal expr irgen 
+- [X] implement infix and prefix expr irgen 
+- [X] implement call expr irgen 
+- [X] implement expr stmt irgen 
+- [X] implement ret stmt irgen 
+- [X] implement func def stmt irgen 
+- [X] implement if stmt irgen 
+- [X] implement while stmt irgen 
 
 12/21/24
 - [X] finish testing for for stmts

@@ -1,1 +1,44 @@
 #pragma once
+
+#include "ir.h"
+
+#include <frontend/parser.h>
+
+namespace neo {
+namespace ir {
+
+class IRBuilder {
+public:
+  IRBuilder(IRContext &ctx);
+
+  void set_cursor(BasicBlock *bb);
+  BasicBlock *get_cursor();
+
+  Instruction *push_unop(InstructionOp op, Value *dest, Value *value);
+  Instruction *push_binop(InstructionOp op, Value *dest, Value *lhs,
+                          Value *rhs);
+
+  Instruction *push_jmp(BasicBlock *T);
+  Instruction *push_br(Value *cond, BasicBlock *T, BasicBlock *F);
+  Instruction *push_call(Value *dest, Function *callee,
+                         const std::vector<Value *> &args);
+  Instruction *push_ret(Value *dest, Value *value);
+
+private:
+  IRContext &ctx;
+  BasicBlock *cursor;
+};
+
+class IRGenerator {
+public:
+  IRGenerator(parse::Ast &ast);
+  Program make_program();
+  Value *gen(Program &program, parse::Ast::NodePtr node);
+
+private:
+  IRContext ctx;
+  IRBuilder builder;
+  parse::Ast &ast;
+};
+} // namespace ir
+} // namespace neo

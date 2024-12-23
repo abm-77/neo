@@ -23,13 +23,13 @@ Ast parse_input(std::string_view input) {
   return Parser::parse(result);
 }
 
-void EXPECT_TYPE(Ast &ast, Ast::NodePtr ptr, i32 vtype,
-                 Ast::TypeData::MetaType mtype) {
-  auto node = ast.at(ptr);
-  EXPECT_EQ(node.type, Ast::AST_TYPE);
-  EXPECT_EQ(node.lhs, vtype);
-  auto type_data = ast.get<Ast::TypeData>(node);
-  EXPECT_EQ(type_data.meta_type, mtype);
+void EXPECT_TYPE(Ast &ast, Ast::NodePtr actual_ptr, Ast::Type expected) {
+  auto actual = ast.get_type(actual_ptr);
+  EXPECT_EQ(actual.kind, expected.kind);
+  EXPECT_EQ(actual.primitive_type, expected.primitive_type);
+  EXPECT_EQ(actual.array_size, expected.array_size);
+  if (actual.el_type != Ast::NULL_NODE)
+    EXPECT_TYPE(ast, actual.el_type, ast.get_type(expected.el_type));
 }
 
 TEST(Parser, ParseExprStmt) {
@@ -65,8 +65,7 @@ TEST(Parser, ParseVarDefStmtConst) {
   auto var_def_data = ast.get<Ast::VarDefData>(var_def_stmt);
   EXPECT_EQ(var_def_data.is_const, true);
 
-  EXPECT_TYPE(ast, var_def_data.type, TYPE_INT,
-              Ast::TypeData::MetaType::SCALAR);
+  EXPECT_TYPE(ast, var_def_data.type, Ast::Type(Ast::Type::PrimitiveType::INT));
 
   auto value = ast.get<Ast::IntLitData>(ast.at(var_def_data.value));
   EXPECT_EQ(value, 123);
@@ -85,8 +84,7 @@ TEST(Parser, ParseVarDefStmtVar) {
   auto var_def_data = ast.get<Ast::VarDefData>(var_def_stmt);
   EXPECT_EQ(var_def_data.is_const, false);
 
-  EXPECT_TYPE(ast, var_def_data.type, TYPE_INT,
-              Ast::TypeData::MetaType::SCALAR);
+  EXPECT_TYPE(ast, var_def_data.type, Ast::Type(Ast::Type::PrimitiveType::INT));
 
   auto value = ast.get<Ast::IntLitData>(ast.at(var_def_data.value));
   EXPECT_EQ(value, -1001);
@@ -105,14 +103,14 @@ TEST(Parser, ParseVarDefStmtArray) {
   auto var_def_data = ast.get<Ast::VarDefData>(var_def_stmt);
   EXPECT_EQ(var_def_data.is_const, false);
 
-  auto arr_el_type_node = ast.at(var_def_data.type);
-  EXPECT_TYPE(ast, var_def_data.type, arr_el_type_node.lhs,
-              Ast::TypeData::MetaType::ARRAY);
+  EXPECT_TYPE(
+      ast, var_def_data.type,
+      Ast::Type(Ast::Type::Kind::ARRAY, Ast::Type::PrimitiveType::INT, 2));
 
   auto value = ast.get<Ast::ArrayLitData>(ast.at(var_def_data.value));
-  auto arr_lit_type_node = ast.at(value.type);
-  EXPECT_TYPE(ast, value.type, arr_lit_type_node.lhs,
-              Ast::TypeData::MetaType::ARRAY);
+  EXPECT_TYPE(
+      ast, value.type,
+      Ast::Type(Ast::Type::Kind::ARRAY, Ast::Type::PrimitiveType::INT, 2));
 
   auto arr_size = ast.get<Ast::IntLitData>(ast.at(var_def_data.value));
   EXPECT_EQ(arr_size, 2);
@@ -139,8 +137,8 @@ TEST(Parser, ParseVarDefStmtBool) {
   auto var_def_data = ast.get<Ast::VarDefData>(var_def_stmt);
   EXPECT_EQ(var_def_data.is_const, true);
 
-  EXPECT_TYPE(ast, var_def_data.type, TYPE_BOOL,
-              Ast::TypeData::MetaType::SCALAR);
+  EXPECT_TYPE(ast, var_def_data.type,
+              Ast::Type(Ast::Type::PrimitiveType::BOOL));
 
   auto value = ast.get<Ast::BoolLitData>(ast.at(var_def_data.value));
   EXPECT_EQ(value, true);
@@ -176,12 +174,11 @@ TEST(Parser, ParsePrefixGroupedExpr) {
   auto var_def_data = ast.get<Ast::VarDefData>(var_def_stmt);
   EXPECT_EQ(var_def_data.is_const, false);
 
-  EXPECT_TYPE(ast, var_def_data.type, TYPE_INT,
-              Ast::TypeData::MetaType::SCALAR);
+  EXPECT_TYPE(ast, var_def_data.type, Ast::Type(Ast::Type::PrimitiveType::INT));
 
   auto prefix_expr = ast.at(var_def_data.value);
   EXPECT_EQ(prefix_expr.type, Ast::AST_PREFIX_EXPR);
-  EXPECT_EQ(ast.get<Ast::PrefixData>(prefix_expr).prefix, TOKEN_MINUS);
+  EXPECT_EQ(static_cast<TokenType>(prefix_expr.rhs), TOKEN_MINUS);
 
   auto infix_expr = ast.at(prefix_expr.lhs);
   EXPECT_EQ(infix_expr.type, Ast::AST_INFIX_EXPR);
@@ -298,8 +295,7 @@ TEST(Parser, ParseForStmt) {
   auto var_def_data = ast.get<Ast::VarDefData>(var_def_stmt);
   EXPECT_EQ(var_def_data.is_const, false);
 
-  EXPECT_TYPE(ast, var_def_data.type, TYPE_INT,
-              Ast::TypeData::MetaType::SCALAR);
+  EXPECT_TYPE(ast, var_def_data.type, Ast::Type(Ast::Type::PrimitiveType::INT));
 
   auto value = ast.get<Ast::IntLitData>(ast.at(var_def_data.value));
   EXPECT_EQ(value, 0);
@@ -334,8 +330,8 @@ TEST(Parser, ParseFuncDefStmt) {
 
   auto func_def_data = ast.get<Ast::FuncDefData>(func_def_stmt);
 
-  EXPECT_TYPE(ast, func_def_data.ret_type, TYPE_INT,
-              Ast::TypeData::MetaType::SCALAR);
+  EXPECT_TYPE(ast, func_def_data.ret_type,
+              Ast::Type(Ast::Type::PrimitiveType::INT));
 
   auto func_params = ast.get_array_of<Ast::FuncDefData::FuncParam>(
       ast.at(func_def_data.params));
@@ -344,8 +340,8 @@ TEST(Parser, ParseFuncDefStmt) {
   for (u32 i = 0; i < func_params.size(); i++) {
     EXPECT_EQ(ast.get<Ast::StringData>(ast.at(func_params[i].ident)),
               expected_params[i]);
-    EXPECT_TYPE(ast, func_def_data.ret_type, TYPE_INT,
-                Ast::TypeData::MetaType::SCALAR);
+    EXPECT_TYPE(ast, func_params[i].type,
+                Ast::Type(Ast::Type::PrimitiveType::INT));
   }
 
   auto func_blk = ast.get_array_of<Ast::NodePtr>(ast.at(func_def_data.blk));
@@ -388,9 +384,9 @@ TEST(Parser, ParseArrLitExprFull) {
   EXPECT_EQ(arr_size, 2);
 
   auto arr_data = ast.get<Ast::ArrayLitData>(arr_lit_expr);
-  auto arr_el_type_node = ast.at(arr_data.type);
-  EXPECT_TYPE(ast, arr_data.type, arr_el_type_node.lhs,
-              Ast::TypeData::MetaType::ARRAY);
+  EXPECT_TYPE(
+      ast, arr_data.type,
+      Ast::Type(Ast::Type::Kind::ARRAY, Ast::Type::PrimitiveType::INT, 2));
 
   auto init_list = ast.get_array_of<Ast::NodePtr>(ast.at(arr_data.init_list));
   EXPECT_EQ(init_list.size(), arr_size);
@@ -411,9 +407,9 @@ TEST(Parser, ParseArrLitExprOmitSize) {
   EXPECT_EQ(arr_size, 2);
 
   auto arr_data = ast.get<Ast::ArrayLitData>(arr_lit_expr);
-  auto arr_el_type_node = ast.at(arr_data.type);
-  EXPECT_TYPE(ast, arr_data.type, arr_el_type_node.lhs,
-              Ast::TypeData::MetaType::ARRAY);
+  EXPECT_TYPE(
+      ast, arr_data.type,
+      Ast::Type(Ast::Type::Kind::ARRAY, Ast::Type::PrimitiveType::INT, 2));
 
   auto init_list = ast.get_array_of<Ast::NodePtr>(ast.at(arr_data.init_list));
   EXPECT_EQ(init_list.size(), arr_size);
@@ -434,9 +430,9 @@ TEST(Parser, ParseArrLitExprOmitInit) {
   EXPECT_EQ(arr_size, 2);
 
   auto arr_data = ast.get<Ast::ArrayLitData>(arr_lit_expr);
-  auto arr_el_type_node = ast.at(arr_data.type);
-  EXPECT_TYPE(ast, arr_data.type, arr_el_type_node.lhs,
-              Ast::TypeData::MetaType::ARRAY);
+  EXPECT_TYPE(
+      ast, arr_data.type,
+      Ast::Type(Ast::Type::Kind::ARRAY, Ast::Type::PrimitiveType::INT, 2));
 
   auto init_list = ast.get_array_of<Ast::NodePtr>(ast.at(arr_data.init_list));
   EXPECT_EQ(init_list.size(), 0);
@@ -450,9 +446,10 @@ TEST(Parser, ParseArrLitNested) {
   EXPECT_EQ(arr_size, 2);
 
   auto arr_data = ast.get<Ast::ArrayLitData>(arr_lit_expr);
-  auto arr_el_type_node = ast.at(arr_data.type);
-  EXPECT_TYPE(ast, arr_data.type, arr_el_type_node.lhs,
-              Ast::TypeData::MetaType::ARRAY);
+  auto el_type = ast.register_type(
+      Ast::Type(Ast::Type::Kind::ARRAY, Ast::Type::PrimitiveType::INT, 2));
+  EXPECT_TYPE(ast, arr_data.type,
+              Ast::Type(Ast::Type::Kind::ARRAY, el_type, 2));
 
   auto init_list = ast.get_array_of<Ast::NodePtr>(ast.at(arr_data.init_list));
   for (u32 i = 0; i < init_list.size(); i++) {

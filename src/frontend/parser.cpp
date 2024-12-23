@@ -11,6 +11,9 @@ namespace parse {
 
 Ast::Ast() : data_offset(0), data_capacity(default_extra_capacity) {
   data = static_cast<u8 *>(malloc(default_extra_capacity));
+  for (u8 i = 0; i < Ast::Type::PrimitiveType::N_PRIM_TYPES; i++) {
+    register_type(Ast::Type(Ast::Type::PrimitiveType(i)));
+  }
 }
 
 Ast::~Ast() { free(data); }
@@ -20,6 +23,18 @@ const std::vector<Ast::Node> &Ast::tree() const { return tree_; };
 const Ast::Node &Ast::root() const { return tree_.back(); };
 
 const Ast::Node &Ast::at(Ast::NodePtr i) const { return tree_.at(i); };
+
+const std::vector<Ast::NodePtr> &Ast::stmts() const { return stmts_; }
+
+void Ast::add_stmt(NodePtr stmt) { stmts_.push_back(stmt); }
+
+Ast::NodePtr Ast::register_type(Ast::Type type) {
+  u32 idx = types.size();
+  types.push_back(type);
+  return idx;
+}
+
+Ast::Type Ast::get_type(u32 idx) { return types.at(idx); }
 
 template <typename T> u32 Ast::alloc_data(T *src, u32 count) {
   u32 offset = data_offset;
@@ -131,39 +146,30 @@ std::optional<b32> Parser::consume_bool_literal() {
 }
 
 Ast::NodePtr Parser::parse_type() {
-  using MetaType = Ast::TypeData::MetaType;
-
+  using Kind = Ast::Type::Kind;
+  using PrimitiveType = Ast::Type::PrimitiveType;
   auto token = next_token();
   switch (token.type) {
   case lex::TOKEN_INT: {
-    Ast::TypeData data = {.meta_type = MetaType::SCALAR};
-    return ast.make_node(Ast::AST_TYPE, TYPE_INT, ast.alloc_data(data));
+    return PrimitiveType::INT;
   } break;
   case lex::TOKEN_FLOAT: {
-    Ast::TypeData data = {.meta_type = MetaType::SCALAR};
-    return ast.make_node(Ast::AST_TYPE, TYPE_FLOAT, ast.alloc_data(data));
+    return PrimitiveType::FLOAT;
   } break;
   case lex::TOKEN_BOOL: {
-    Ast::TypeData data = {.meta_type = MetaType::SCALAR};
-    return ast.make_node(Ast::AST_TYPE, TYPE_BOOL, ast.alloc_data(data));
-  } break;
-  case lex::TOKEN_VOID: {
-    Ast::TypeData data = {.meta_type = MetaType::SCALAR};
-    return ast.make_node(Ast::AST_TYPE, TYPE_VOID, ast.alloc_data(data));
+    return PrimitiveType::BOOL;
   } break;
   case lex::TOKEN_LEFT_BRACKET: {
     auto capacity = consume_int_literal();
-    if (!capacity.has_value())
-      return Ast::NULL_NODE;
     consume(lex::TOKEN_RIGHT_BRACKET);
 
-    auto type = parse_type();
-
-    Ast::TypeData data = {.meta_type = MetaType::ARRAY};
-    return ast.make_node(Ast::AST_TYPE, type, ast.alloc_data(data));
+    auto el_type = parse_type();
+    auto type =
+        ast.register_type(Ast::Type(Kind::ARRAY, el_type, capacity.value()));
+    return type;
   } break;
   default:
-    return Ast::NULL_NODE;
+    return PrimitiveType::VOID;
   }
 }
 
@@ -203,10 +209,9 @@ Ast::NodePtr Parser::parse_arr_lit_expr() {
               ? capacity.value()
               : ast.get_array_of<Ast::NodePtr>(ast.at(init_list)).size();
 
-  Ast::TypeData type_data{.meta_type = Ast::TypeData::MetaType::ARRAY};
-  auto type = ast.make_node(Ast::AST_TYPE, el_type, ast.alloc_data(type_data));
-
-  Ast::ArrayLitData data = {.type = type, .init_list = init_list};
+  Ast::ArrayLitData data = {
+      .type = ast.register_type(Ast::Type(Ast::Type::Kind::ARRAY, el_type, n)),
+      .init_list = init_list};
   return ast.make_node(Ast::AST_ARR_LIT_EXPR, n,
                        ast.alloc_data<Ast::ArrayLitData>(data));
 }
@@ -238,9 +243,8 @@ Ast::NodePtr Parser::parse_grouped_expr() {
 Ast::NodePtr Parser::parse_prefix_expr() {
   auto prefix = peek();
   consume(prefix);
-  Ast::PrefixData data = {.prefix = prefix};
   return ast.make_node(Ast::AST_PREFIX_EXPR, parse_expr(PRECEDENCE_PREFIX),
-                       ast.alloc_data(data));
+                       prefix);
 }
 
 Ast::NodePtr Parser::parse_func_call_expr(Ast::NodePtr fn) {
@@ -408,7 +412,7 @@ Ast::NodePtr Parser::parse_var_def_stmt() {
   Ast::NodePtr ident = parse_ident_expr();
 
   // TODO: handle type inference
-  std::optional<i32> type;
+  Ast::NodePtr type = Ast::NULL_NODE;
   if (peek_is(lex::TOKEN_COLON)) {
     consume(lex::TOKEN_COLON);
     type = parse_type();
@@ -418,8 +422,7 @@ Ast::NodePtr Parser::parse_var_def_stmt() {
   Ast::NodePtr expr = parse_expr(PRECEDENCE_LOWEST);
   consume(lex::TOKEN_SEMICOLON);
 
-  Ast::VarDefData data = {
-      .type = type.value(), .value = expr, .is_const = is_const};
+  Ast::VarDefData data = {.type = type, .value = expr, .is_const = is_const};
   return ast.make_node(Ast::AST_VAR_DEF_STMT, ident, ast.alloc_data(data));
 }
 
@@ -464,8 +467,14 @@ Ast::NodePtr Parser::parse_func_def_stmt() {
   }
   consume(lex::TOKEN_RIGHT_PAREN);
 
-  auto ret_type = parse_type();
-  auto blk = parse_blk_stmt();
+  auto ret_type = (!peek_is(lex::TOKEN_LEFT_BRACE))
+                      ? parse_type()
+                      : Ast::Type::PrimitiveType::VOID;
+
+  auto blk =
+      (peek_is(lex::TOKEN_LEFT_BRACE)) ? parse_blk_stmt() : Ast::NULL_NODE;
+  if (blk == Ast::NULL_NODE)
+    consume(lex::TOKEN_SEMICOLON);
   auto param_list = ast.make_node(
       Ast::AST_SPAN, ast.alloc_data<FuncParam>(params.data(), params.size()),
       params.size());
@@ -497,12 +506,12 @@ Ast::NodePtr Parser::parse_statement() {
 }
 
 Ast Parser::parse(const LexerResult &lex_result) {
-  Ast A;
-  Parser P(A, lex_result);
+  Ast ast;
+  Parser P(ast, lex_result);
   while (P.token_idx < P.lexer_result.tokens.size()) {
-    P.parse_statement();
+    ast.add_stmt(P.parse_statement());
   }
-  return A;
+  return ast;
 }
 
 } // namespace parse
