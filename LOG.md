@@ -1,6 +1,14 @@
 LOG
 ====
 
+12/22/24
+- [X] for stmt irgen 
+- [X] var def irgen 
+- [X] var assignment irgen 
+- [X] var read irgen 
+- [X] program symbol table 
+- [X] implement (stack) memory instructions in ir 
+
 12/22/24 - 12/23/24
 - [X] design ir
 - [X] implement ir backend ops

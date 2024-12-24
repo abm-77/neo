@@ -302,7 +302,7 @@ TEST(Parser, ParseForStmt) {
 
   auto for_data = ast.get<Ast::ForData>(for_stmt);
 
-  auto cond = ast.at(ast.at(for_data.cond).lhs);
+  auto cond = ast.at(for_data.cond);
   EXPECT_EQ(cond.type, Ast::AST_INFIX_EXPR);
   EXPECT_EQ(ast.get<Ast::StringData>(ast.at(cond.lhs)), "i");
   auto infix_data = ast.get<Ast::InfixData>(cond);

@@ -24,6 +24,10 @@ public:
                          const std::vector<Value *> &args);
   Instruction *push_ret(Value *dest, Value *value);
 
+  Instruction *push_alloca(Value *dest, Type *type, i32 count);
+  Instruction *push_str(Value *dest, Value *value, Value *offset = nullptr);
+  Instruction *push_ld(Value *dest, Value *src, Value *offset = nullptr);
+
 private:
   IRContext &ctx;
   BasicBlock *cursor;

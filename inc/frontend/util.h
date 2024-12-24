@@ -69,8 +69,6 @@ static const char *token_type_to_string(TokenType type) {
     return "TOKEN_COMMENT";
   case TOKEN_SPACE:
     return "TOKEN_SPACE";
-  case TOKEN_TYPE:
-    return "TOKEN_TYPE";
   case TOKEN_EOF:
     return "TOKEN_EOF";
   case TOKEN_INVALID:

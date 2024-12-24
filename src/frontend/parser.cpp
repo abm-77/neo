@@ -384,7 +384,8 @@ Ast::NodePtr Parser::parse_for_stmt() {
   consume(lex::TOKEN_CTRL_FOR);
   consume(lex::TOKEN_LEFT_PAREN);
   auto init = parse_statement();
-  auto cond = parse_statement();
+  auto cond = parse_expr(PRECEDENCE_LOWEST);
+  consume(lex::TOKEN_SEMICOLON);
   auto cont = parse_expr(PRECEDENCE_LOWEST);
   consume(lex::TOKEN_RIGHT_PAREN);
   auto blk = parse_blk_stmt();

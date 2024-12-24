@@ -23,29 +23,30 @@ enum TokenType : u8 {
   TOKEN_DOT,
   TOKEN_SEMICOLON,
   TOKEN_COLON,
+
+  // arithmetic
   TOKEN_MINUS,
-  TOKEN_MINUS_EQUAL,
   TOKEN_PLUS,
-  TOKEN_PLUS_EQUAL,
   TOKEN_SLASH,
-  TOKEN_SLASH_EQUAL,
   TOKEN_STAR,
-  TOKEN_STAR_EQUAL,
   TOKEN_PERCENT,
-  TOKEN_PERCENT_EQUAL,
   TOKEN_BANG,
-  TOKEN_BANG_EQUAL,
+
+  // assignment
   TOKEN_EQUAL,
-  TOKEN_EQUAL_EQUAL,
-  TOKEN_GREATER,
-  TOKEN_GREATER_EQUAL,
+  TOKEN_MINUS_EQUAL,
+  TOKEN_PLUS_EQUAL,
+  TOKEN_SLASH_EQUAL,
+  TOKEN_STAR_EQUAL,
+  TOKEN_PERCENT_EQUAL,
+
+  // comparison
   TOKEN_LESS,
+  TOKEN_GREATER,
   TOKEN_LESS_EQUAL,
-  TOKEN_COMMENT,
-  TOKEN_SPACE,
-  TOKEN_TYPE,
-  TOKEN_EOF,
-  TOKEN_INVALID,
+  TOKEN_GREATER_EQUAL,
+  TOKEN_EQUAL_EQUAL,
+  TOKEN_BANG_EQUAL,
 
   // keywords
   TOKEN_VOID,
@@ -68,6 +69,12 @@ enum TokenType : u8 {
   TOKEN_BOOL_OR,
   TOKEN_BOOL_AND,
   TOKEN_RETURN,
+
+  // misc
+  TOKEN_COMMENT,
+  TOKEN_SPACE,
+  TOKEN_EOF,
+  TOKEN_INVALID,
 
   // TODO: in the event that we support different sizes of numerics (e.g. i32,
   // f32, u32, etc.) we need to refactor how we handle the extra data.

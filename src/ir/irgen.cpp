@@ -1,3 +1,4 @@
+#include <alloca.h>
 #include <cassert>
 #include <frontend/lexer.h>
 #include <ir/ir.h>
@@ -105,6 +106,52 @@ Instruction *IRBuilder::push_ret(Value *dest, Value *value) {
   return ret_instr;
 }
 
+Instruction *IRBuilder::push_alloca(Value *dest, Type *type, i32 count) {
+  assert(count >= 1);
+  assert(dest->get_type()->get_derived_type() == Type::DerivedType::POINTER);
+  assert(*dest->get_type()->get_base_type() == *type);
+
+  Instruction *alloca_instr = cursor->push_instr(OP_ALLOCA, dest->get_type());
+  alloca_instr->set_dest(dest);
+  alloca_instr->add_operand(ctx.new_value("count", count));
+
+  dest->set_def_instr(alloca_instr);
+
+  return alloca_instr;
+}
+
+Instruction *IRBuilder::push_str(Value *dest, Value *value, Value *offset) {
+  assert(dest->get_type()->get_derived_type() == Type::DerivedType::POINTER);
+  assert(*dest->get_type()->get_base_type() == *value->get_type());
+
+  Instruction *str_instr = cursor->push_instr(OP_STR, dest->get_type());
+  str_instr->set_dest(dest);
+  if (offset)
+    str_instr->add_operand(offset);
+  str_instr->add_operand(value);
+
+  dest->set_def_instr(str_instr);
+  value->add_user(str_instr);
+
+  return str_instr;
+}
+
+Instruction *IRBuilder::push_ld(Value *dest, Value *src, Value *offset) {
+  assert(src->get_type()->get_derived_type() == Type::DerivedType::POINTER);
+  assert(*dest->get_type() == *src->get_type()->get_base_type());
+
+  Instruction *ld_instr = cursor->push_instr(OP_LD, dest->get_type());
+  ld_instr->set_dest(dest);
+  if (offset)
+    ld_instr->add_operand(offset);
+  ld_instr->add_operand(src);
+
+  dest->set_def_instr(ld_instr);
+  src->add_user(ld_instr);
+
+  return ld_instr;
+}
+
 // IRGenerator
 IRGenerator::IRGenerator(Ast &ast) : builder(ctx), ast(ast) {}
 
@@ -144,21 +191,60 @@ Value *IRGenerator::gen(Program &program, Ast::NodePtr ptr) {
     default:
       return nullptr;
     }
-
     return result;
   } break;
 
   case Ast::AST_INFIX_EXPR: {
     auto infix_data = ast.get<Ast::InfixData>(node);
+
+    if (infix_data.op >= lex::TOKEN_EQUAL &&
+        infix_data.op <= lex::TOKEN_STAR_EQUAL) {
+      auto var_name = ast.get<Ast::StringData>(ast.at(node.lhs));
+      auto var = program.lookup_symbol(var_name);
+      if (!var)
+        return nullptr;
+
+      auto rhs = gen(program, infix_data.rhs);
+      if (!rhs)
+        return nullptr;
+
+      auto var_val = ctx.new_value("var_val", var->get_type()->get_base_type());
+      builder.push_ld(var_val, var);
+
+      Value *store_value = nullptr;
+      if (infix_data.op == TOKEN_EQUAL) {
+        store_value = rhs;
+      } else {
+        store_value = ctx.new_value("inter", var_val->get_type());
+        switch (infix_data.op) {
+        case TOKEN_MINUS_EQUAL:
+          builder.push_binop(OP_SUB, store_value, var_val, rhs);
+          break;
+        case TOKEN_PLUS_EQUAL:
+          builder.push_binop(OP_ADD, store_value, var_val, rhs);
+          break;
+        case TOKEN_SLASH_EQUAL:
+          builder.push_binop(OP_DIV, store_value, var_val, rhs);
+          break;
+        case TOKEN_STAR_EQUAL:
+          builder.push_binop(OP_MUL, store_value, var_val, rhs);
+          break;
+        default:
+          return nullptr;
+        }
+      }
+      builder.push_str(var, store_value);
+      return store_value;
+    }
+
     auto lhs = gen(program, node.lhs); // lhs is stored within node
     auto rhs = gen(program, infix_data.rhs);
-    auto op = infix_data.op;
     Value *result;
 
     if (!lhs || !rhs)
       return nullptr;
 
-    switch (op) {
+    switch (infix_data.op) {
     case lex::TOKEN_PLUS:
       result = ctx.new_value("infixtmp", lhs->get_type());
       builder.push_binop(OP_ADD, result, lhs, rhs);
@@ -178,6 +264,10 @@ Value *IRGenerator::gen(Program &program, Ast::NodePtr ptr) {
     case lex::TOKEN_EQUAL_EQUAL:
       result = ctx.new_value("infixtmp", ctx.get_type(Type("bool", 1, 1)));
       builder.push_binop(OP_CEQ, result, lhs, rhs);
+      break;
+    case lex::TOKEN_BANG_EQUAL:
+      result = ctx.new_value("infixtmp", ctx.get_type(Type("bool", 1, 1)));
+      builder.push_binop(OP_CNE, result, lhs, rhs);
       break;
     case lex::TOKEN_LESS:
       result = ctx.new_value("infixtmp", ctx.get_type(Type("bool", 1, 1)));
@@ -220,6 +310,14 @@ Value *IRGenerator::gen(Program &program, Ast::NodePtr ptr) {
     return result;
   } break;
 
+  case Ast::AST_IDENT_EXPR: {
+    auto var_name = ast.get<Ast::StringData>(node);
+    auto var_slot = program.lookup_symbol(var_name);
+    auto result = ctx.new_value("ldtmp", var_slot->get_type()->get_base_type());
+    builder.push_ld(result, var_slot);
+    return result;
+  } break;
+
   case Ast::AST_EXPR_STMT: {
     return gen(program, node.lhs);
   } break;
@@ -229,6 +327,19 @@ Value *IRGenerator::gen(Program &program, Ast::NodePtr ptr) {
     auto result = ctx.new_value("rettmp", value->get_type());
     builder.push_ret(result, value);
     return result;
+  } break;
+
+  case Ast::AST_VAR_DEF_STMT: {
+    auto var_name = ast.get<Ast::StringData>(ast.at(node.lhs));
+    auto var_data = ast.get<Ast::VarDefData>(node);
+    auto var_type = ctx.convert_ast_type_to_ir_type(ast, var_data.type);
+    auto var_value = gen(program, var_data.value);
+
+    auto alloca = ctx.new_value("deftmp", ctx.get_type(Type::ptr_to(var_type)));
+    builder.push_str(alloca, var_value);
+    program.new_symbol(var_name, alloca);
+
+    return nullptr;
   } break;
 
   case Ast::AST_FN_DEF_STMT: {
@@ -257,12 +368,21 @@ Value *IRGenerator::gen(Program &program, Ast::NodePtr ptr) {
     if (fn_data.blk != Ast::NULL_NODE) {
       auto entry_bb = F->add_block("entry");
       builder.set_cursor(entry_bb);
+      program.push_scope();
 
-      // TODO: Add stores and allocas for arguments
+      for (auto param : fn_params) {
+        auto arg_name = ast.get<Ast::StringData>(ast.at(param.ident));
+        auto arg_type = ctx.convert_ast_type_to_ir_type(ast, param.type);
+        auto alloca =
+            ctx.new_value("tmpalloc", ctx.get_type(Type::ptr_to(arg_type)));
+        program.new_symbol(arg_name, alloca);
+      }
 
       auto stmts = ast.get_array_of<Ast::NodePtr>(ast.at(fn_data.blk));
       for (auto stmt : stmts)
         gen(program, stmt);
+
+      program.pop_scope();
     }
     return nullptr;
   } break;
@@ -270,7 +390,7 @@ Value *IRGenerator::gen(Program &program, Ast::NodePtr ptr) {
   case Ast::AST_IF_STMT: {
     auto F = builder.get_cursor()->get_parent();
     auto conds = ast.get_array_of<Ast::NodePtr>(ast.at(node.lhs));
-    auto blks = ast.get_array_of<Ast::NodePtr>(ast.at(node.lhs));
+    auto blks = ast.get_array_of<Ast::NodePtr>(ast.at(node.rhs));
     auto endif = std::make_unique<BasicBlock>(F, "endif");
 
     // if (cond) {}
@@ -280,10 +400,14 @@ Value *IRGenerator::gen(Program &program, Ast::NodePtr ptr) {
 
       builder.push_br(cond, if_block, endif.get());
       builder.set_cursor(if_block);
+      program.push_scope();
+
       auto blk = ast.get_array_of<Ast::NodePtr>(ast.at(blks[0]));
       for (auto stmt : blk)
         gen(program, stmt);
       builder.push_jmp(endif.get());
+
+      program.pop_scope();
     }
     // if (cond) {} else {}
     else if (conds.size() == 1 && blks.size() == 2) {
@@ -294,16 +418,20 @@ Value *IRGenerator::gen(Program &program, Ast::NodePtr ptr) {
       builder.push_br(cond, if_block, else_block);
 
       builder.set_cursor(if_block);
+      program.push_scope();
       auto ifstmts = ast.get_array_of<Ast::NodePtr>(ast.at(blks[0]));
       for (auto stmt : ifstmts)
         gen(program, stmt);
       builder.push_jmp(endif.get());
+      program.pop_scope();
 
       builder.set_cursor(else_block);
+      program.push_scope();
       auto elstmts = ast.get_array_of<Ast::NodePtr>(ast.at(blks[1]));
       for (auto stmt : elstmts)
         gen(program, stmt);
       builder.push_jmp(endif.get());
+      program.pop_scope();
     }
     // if (cond0) {} else if (cond1) ... else {}
     else {
@@ -322,9 +450,11 @@ Value *IRGenerator::gen(Program &program, Ast::NodePtr ptr) {
         builder.push_br(cond, me, next_cond_header);
 
         builder.set_cursor(me);
+        program.push_scope();
         for (auto stmt : stmts)
           gen(program, stmt);
         builder.push_jmp(endif.get());
+        program.pop_scope();
 
         cond_header = next_cond_header;
       }
@@ -337,23 +467,29 @@ Value *IRGenerator::gen(Program &program, Ast::NodePtr ptr) {
       if (blks.size() == conds.size()) {
         builder.push_br(cond, me, endif.get());
         builder.set_cursor(me);
+        program.push_scope();
         for (auto stmt : stmts)
           gen(program, stmt);
         builder.push_jmp(endif.get());
+        program.pop_scope();
       } else {
         auto else_stmts = ast.get_array_of<Ast::NodePtr>(ast.at(blks[i + 1]));
         auto else_bb = F->add_block("else");
         builder.push_br(cond, me, else_bb);
 
         builder.set_cursor(me);
+        program.push_scope();
         for (auto stmt : stmts)
           gen(program, stmt);
         builder.push_jmp(endif.get());
+        program.pop_scope();
 
         builder.set_cursor(else_bb);
+        program.push_scope();
         for (auto stmt : else_stmts)
           gen(program, stmt);
         builder.push_jmp(endif.get());
+        program.pop_scope();
       }
     }
     builder.set_cursor(F->add_block(std::move(endif)));
@@ -376,10 +512,45 @@ Value *IRGenerator::gen(Program &program, Ast::NodePtr ptr) {
     builder.push_br(cond, loop_body, loop_end);
 
     builder.set_cursor(loop_body);
+    program.push_scope();
     auto stmts = ast.get_array_of<Ast::NodePtr>(ast.at(node.rhs));
     for (auto stmt : stmts)
       gen(program, stmt);
     builder.push_jmp(loop_header);
+    program.pop_scope();
+
+    builder.set_cursor(loop_end);
+    return nullptr;
+  } break;
+
+  case Ast::AST_FOR_STMT: {
+    auto F = builder.get_cursor()->get_parent();
+    auto for_data = ast.get<Ast::ForData>(node);
+
+    program.push_scope();
+    auto preheader = F->add_block("loop_preheader");
+    builder.push_jmp(preheader);
+
+    builder.set_cursor(preheader);
+    gen(program, node.lhs); // generate init stmt, pushes store for loop var
+
+    auto header = F->add_block("loop_header");
+    builder.push_jmp(header);
+
+    auto loop = F->add_block("loop");
+    auto loop_end = F->add_block("loop_end");
+
+    builder.set_cursor(header);
+    auto cond = gen(program, for_data.cond);
+    builder.push_br(cond, loop, loop_end);
+
+    builder.set_cursor(loop);
+    auto stmts = ast.get_array_of<Ast::NodePtr>(ast.at(for_data.blk));
+    for (auto stmt : stmts)
+      gen(program, stmt);
+    gen(program, for_data.cont);
+    builder.push_jmp(header);
+    program.pop_scope();
 
     builder.set_cursor(loop_end);
     return nullptr;

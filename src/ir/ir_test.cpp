@@ -14,20 +14,24 @@ Ast parse_input(std::string_view input) {
 }
 
 TEST(IR, IrTest) {
-  // clang-format off
   auto ast = parse_input(
-    "fn sub (a: int, b: int) int { return 1 - 2; }"
-    "fn add(a: int, b: int) int {"
-    " while (1 < 5) { sub (1, 2); }"
-    " return 1 + 2;"
-    "}"
-  );
+      "fn sub (a: int, b: int) int { return 1 - 2; }"
+      "fn add(a: int, b: int) int {"
+      " while (1 < 5) { sub (1, 2); }"
+      " var c: int = a;"
+      " c = a / b;"
+      " var cond: bool = a < b;"
+      " if (cond) { a += 1; }"
+      " if (1 < 2) { a += 1; } else if (2 < 3) { b += 1; } else { c += 1; }"
+      " for (var t: int = 0; t < 10; t += 1) { a; }"
+      " return b + 2;"
+      "}");
   IRGenerator generator(ast);
   auto program = generator.make_program();
-  auto& funcs =  program.get_functions();
+  auto &funcs = program.get_functions();
 
-  for (auto& [_, func] : funcs) {
-    for (auto& bb : func.get_blocks()) {
+  for (auto &[_, func] : funcs) {
+    for (auto &bb : func.get_blocks()) {
       std::cout << "block: " << bb->get_name() << std::endl;
     }
   }

@@ -22,14 +22,25 @@ class IRContext;
 
 class Type {
 public:
-  Type();
+  enum DerivedType {
+    NONE,
+    POINTER,
+    ARRAY,
+  };
+
+public:
   explicit Type(std::string_view name, u32 size = 0, u32 align = 4,
-                b32 is_primitive = true);
+                DerivedType derived_type = NONE, Type *base_type = nullptr);
+
+  static Type arr_of(Type *type, u32 size);
+  static Type ptr_to(Type *type);
 
   const std::string_view &get_name() const;
   u32 get_size() const;
   u32 get_alignment() const;
   b32 is_primitive_type() const;
+  DerivedType get_derived_type() const;
+  Type *get_base_type() const;
   b32 operator==(const Type &other) const;
   b32 operator!=(const Type &other) const;
 
@@ -37,7 +48,9 @@ private:
   std::string_view name;
   u32 size;
   u32 alignment;
-  b32 is_primitive;
+
+  DerivedType derived_type;
+  Type *base_type;
 };
 
 class Value {
@@ -45,8 +58,8 @@ public:
   using ConstantValue = std::variant<i32, b32, f32>;
 
 public:
-  Value(std::string_view name, Type type);
-  Value(std::string_view name, Type type, ConstantValue value);
+  Value(std::string_view name, Type *type);
+  Value(std::string_view name, Type *type, ConstantValue value);
 
   static Value int_value(i32 val);
   static Value bool_value(b32 val);
@@ -54,8 +67,8 @@ public:
   const std::string_view get_name() const;
   void set_name(const std::string_view new_name);
 
-  Type get_type() const;
-  void set_type(Type new_type);
+  Type *get_type() const;
+  void set_type(Type *new_type);
 
   Instruction *get_def_instr() const;
   void set_def_instr(Instruction *instr);
@@ -69,7 +82,7 @@ public:
 
 private:
   std::string_view name;
-  Type type;
+  Type *type;
   Instruction *def_instr;
   std::vector<Instruction *> users;
   std::optional<ConstantValue> constant_value;
@@ -90,6 +103,7 @@ enum InstructionOp {
 
   // comparison
   OP_CEQ,
+  OP_CNE,
   OP_CLT,
   OP_CGT,
   OP_CLE,
@@ -102,13 +116,19 @@ enum InstructionOp {
   OP_RET,
   OP_PHI,
 
+  // Memory
+  OP_FREE,
+  OP_ALLOCA,
+  OP_LD,
+  OP_STR,
+
   // misc
   OP_ID
 };
 
 class Instruction {
 public:
-  Instruction(InstructionOp op, Type type);
+  Instruction(InstructionOp op, Type *type);
 
   InstructionOp get_op() const;
   void set_op(InstructionOp new_op);
@@ -129,11 +149,11 @@ public:
   const std::vector<Instruction *> get_users() const;
   void add_user(Instruction *user);
 
-  Type get_type() const;
+  Type *get_type() const;
 
 private:
   InstructionOp op;
-  Type type;
+  Type *type;
 
   Value *dest;
   Function *function;
@@ -153,7 +173,7 @@ public:
 
   Function *get_parent();
 
-  Instruction *push_instr(InstructionOp op, Type type);
+  Instruction *push_instr(InstructionOp op, Type *type);
   std::vector<std::unique_ptr<Instruction>> &get_instructions();
 
   void add_pred(BasicBlock *bb);
@@ -170,7 +190,7 @@ private:
 class Function {
 public:
   struct Arg {
-    Type type;
+    Type *type;
     std::string_view name;
   };
 
@@ -185,11 +205,11 @@ public:
   BasicBlock *add_block(std::unique_ptr<BasicBlock> block);
   b32 empty();
 
-  void set_return_type(Type rtype);
-  Type get_return_type();
+  void set_return_type(Type *rtype);
+  Type *get_return_type();
 
 private:
-  Type ret_type;
+  Type *ret_type;
   std::string_view name;
   std::vector<Arg> args;
   std::vector<std::unique_ptr<BasicBlock>> basic_blocks;
@@ -199,28 +219,34 @@ class Program {
 public:
   Program(IRContext &ctx, std::string_view name);
 
+  void push_scope();
+  void pop_scope();
+  void new_symbol(std::string_view name, Value *value);
+  Value *lookup_symbol(std::string_view var);
+  const std::unordered_map<std::string_view, Value *> &get_symbol_table();
+
   Function *new_function(std::string_view name);
   Function *get_function(std::string_view name);
   const std::unordered_map<std::string_view, Function> &get_functions();
 
 private:
-  IRContext &ctx;
   std::string_view name;
   std::unordered_map<std::string_view, Function> functions;
+  std::vector<std::unordered_map<std::string_view, Value *>> scopes;
 };
 
 class IRContext {
 public:
-  Type get_type(Type type);
+  Type *get_type(Type type);
 
-  Value *new_value(std::string_view name, Type type);
+  Value *new_value(std::string_view name, Type *type);
   Value *new_value(std::string_view name, Value::ConstantValue value);
 
-  Type convert_ast_type_to_ir_type(parse::Ast &ast,
-                                   parse::Ast::NodePtr type_ptr);
+  Type *convert_ast_type_to_ir_type(parse::Ast &ast,
+                                    parse::Ast::NodePtr type_ptr);
 
 private:
-  std::unordered_map<std::string_view, Type> type_registry;
+  std::unordered_map<std::string_view, std::unique_ptr<Type>> type_registry;
   std::vector<std::unique_ptr<Value>> values;
 };
 

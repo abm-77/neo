@@ -9,9 +9,25 @@
 namespace neo {
 namespace ir {
 // Type
-Type::Type() : name(""), size(0), alignment(0), is_primitive(false) {}
-Type::Type(std::string_view name, u32 size, u32 align, b32 is_primitive)
-    : name(name), size(size), alignment(align), is_primitive(is_primitive) {}
+Type::Type(std::string_view name, u32 size, u32 align, DerivedType derived_type,
+           Type *base_type)
+    : name(name), size(size), alignment(align), derived_type(derived_type),
+      base_type(base_type) {}
+
+Type Type::arr_of(Type *type, u32 size) {
+  return Type(
+      "array(" + std::string(type->get_name().begin(), type->get_name().end()) +
+          ")",
+      type->get_size() * size, type->get_alignment(), Type::DerivedType::ARRAY,
+      type);
+}
+
+Type Type::ptr_to(Type *type) {
+  return Type(
+      "ptr(" + std::string(type->get_name().begin(), type->get_name().end()) +
+          ")",
+      8, 8, Type::DerivedType::POINTER, type);
+}
 
 const std::string_view &Type::get_name() const { return name; }
 
@@ -19,29 +35,35 @@ u32 Type::get_size() const { return size; }
 
 u32 Type::get_alignment() const { return alignment; }
 
-b32 Type::is_primitive_type() const { return is_primitive; }
+b32 Type::is_primitive_type() const { return derived_type == NONE; }
+
+Type::DerivedType Type::get_derived_type() const { return derived_type; }
+Type *Type::get_base_type() const { return base_type; }
 
 b32 Type::operator==(const Type &other) const {
+  b32 base_eq =
+      (!base_type && !other.base_type) ||
+      ((base_type && other.base_type) && (*base_type == *other.base_type));
   return name == other.name && size == other.size &&
-         is_primitive == other.is_primitive;
+         derived_type == other.derived_type && base_eq;
 }
 b32 Type::operator!=(const Type &other) const { return !(*this == other); }
 
 // Value
-Value::Value(std::string_view name, Type type)
+Value::Value(std::string_view name, Type *type)
     : name(name), type(type), def_instr(nullptr), constant_value(std::nullopt) {
 }
 
-Value::Value(std::string_view name, Type type, ConstantValue value)
+Value::Value(std::string_view name, Type *type, ConstantValue value)
     : name(name), type(type), def_instr(nullptr), constant_value(value) {}
 
 const std::string_view Value::get_name() const { return name; }
 
 void Value::set_name(const std::string_view new_name) { name = new_name; }
 
-Type Value::get_type() const { return type; }
+Type *Value::get_type() const { return type; }
 
-void Value::set_type(Type new_type) { type = new_type; }
+void Value::set_type(Type *new_type) { type = new_type; }
 
 Instruction *Value::get_def_instr() const { return def_instr; }
 
@@ -58,7 +80,7 @@ Value::ConstantValue Value::get_const_value() { return constant_value.value(); }
 void Value::set_const_value(ConstantValue value) { constant_value = value; }
 
 // Instruction
-Instruction::Instruction(InstructionOp op, Type type)
+Instruction::Instruction(InstructionOp op, Type *type)
     : op(op), type(type), dest(nullptr), has_side_effects(false) {}
 
 InstructionOp Instruction::get_op() const { return op; }
@@ -89,7 +111,7 @@ void Instruction::set_function(Function *fn) { function = fn; }
 
 void Instruction::add_user(Instruction *user) { users.push_back(user); }
 
-Type Instruction::get_type() const { return type; }
+Type *Instruction::get_type() const { return type; }
 
 // BasicBlock
 BasicBlock::BasicBlock(Function *parent, std::string_view name)
@@ -103,7 +125,7 @@ std::vector<std::unique_ptr<Instruction>> &BasicBlock::get_instructions() {
   return instrs;
 }
 
-Instruction *BasicBlock::push_instr(InstructionOp op, Type type) {
+Instruction *BasicBlock::push_instr(InstructionOp op, Type *type) {
   instrs.push_back(std::make_unique<Instruction>(op, type));
   return instrs.back().get();
 }
@@ -136,13 +158,12 @@ BasicBlock *Function::add_block(std::unique_ptr<BasicBlock> block) {
 
 b32 Function::empty() { return basic_blocks.empty(); }
 
-void Function::set_return_type(Type rtype) { ret_type = rtype; }
+void Function::set_return_type(Type *rtype) { ret_type = rtype; }
 
-Type Function::get_return_type() { return ret_type; };
+Type *Function::get_return_type() { return ret_type; };
 
 // Program
-Program::Program(IRContext &ctx, std::string_view name)
-    : ctx(ctx), name(name) {}
+Program::Program(IRContext &ctx, std::string_view name) : name(name) {}
 
 const std::unordered_map<std::string_view, Function> &Program::get_functions() {
   return functions;
@@ -159,17 +180,43 @@ Function *Program::new_function(std::string_view name) {
   return &functions[name];
 }
 
-// Context
-Type IRContext::get_type(Type type) {
-  if (type_registry.contains(type.get_name()))
-    return type_registry.at(type.get_name());
+void Program::push_scope() { scopes.push_back({}); }
 
-  type_registry[type.get_name()] = type;
-
-  return type;
+void Program::pop_scope() {
+  if (!scopes.empty())
+    scopes.pop_back();
 }
 
-Value *IRContext::new_value(std::string_view name, Type type) {
+void Program::new_symbol(std::string_view name, Value *value) {
+  scopes.back()[name] = value;
+}
+
+Value *Program::lookup_symbol(std::string_view var) {
+  for (auto it = scopes.rbegin(); it != scopes.rend(); it++) {
+    auto found = it->find(var);
+    if (found != it->end()) {
+      return found->second;
+    }
+  }
+  return nullptr;
+}
+
+const std::unordered_map<std::string_view, Value *> &
+Program::get_symbol_table() {
+  return scopes.back();
+}
+
+// Context
+Type *IRContext::get_type(Type type) {
+  if (type_registry.contains(type.get_name()))
+    return type_registry[type.get_name()].get();
+
+  type_registry[type.get_name()] = std::make_unique<Type>(type);
+
+  return type_registry[type.get_name()].get();
+}
+
+Value *IRContext::new_value(std::string_view name, Type *type) {
   values.push_back(std::make_unique<Value>(name, type));
   return values.back().get();
 }
@@ -188,8 +235,8 @@ Value *IRContext::new_value(std::string_view name, Value::ConstantValue value) {
   return values.back().get();
 }
 
-Type IRContext::convert_ast_type_to_ir_type(parse::Ast &ast,
-                                            parse::Ast::NodePtr type_ptr) {
+Type *IRContext::convert_ast_type_to_ir_type(parse::Ast &ast,
+                                             parse::Ast::NodePtr type_ptr) {
   using AstKind = parse::Ast::Type::Kind;
   using AstPrim = parse::Ast::Type::PrimitiveType;
 
@@ -207,13 +254,13 @@ Type IRContext::convert_ast_type_to_ir_type(parse::Ast &ast,
       return get_type(Type("void", 0, 0));
     }
   } break;
+  case AstKind::POINTER: {
+    auto el_type = convert_ast_type_to_ir_type(ast, ast_type.el_type);
+    return get_type(Type::ptr_to(el_type));
+  } break;
   case AstKind::ARRAY: {
     auto el_type = convert_ast_type_to_ir_type(ast, ast_type.el_type);
-    return get_type(Type(
-        "array(" +
-            std::string(el_type.get_name().begin(), el_type.get_name().end()) +
-            ")",
-        el_type.get_size() * ast_type.array_size, el_type.get_alignment()));
+    return get_type(Type::arr_of(el_type, ast_type.array_size));
   } break;
   default:
     return get_type(Type("void", 0, 0));
