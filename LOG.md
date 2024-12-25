@@ -2,9 +2,8 @@ LOG
 ====
 
 12/25/24
-- [ ] switch from using string_views to strings to have more dynamic names
-- [ ] do some code cleanup
-- [ ] start codegen???
+- [X] generate unique label and block names 
+- [X] flesh out debug print more
 
 12/24/24
 - [X] array lit irgen

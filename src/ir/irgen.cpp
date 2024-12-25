@@ -47,7 +47,7 @@ Instruction *IRBuilder::push_jmp(BasicBlock *bb) {
   Instruction *jmp_instr =
       cursor->push_instr(OP_BR, ctx.get_type(Type("void", 0, 0)));
 
-  jmp_instr->add_label(bb->get_name());
+  jmp_instr->add_label(bb->label());
 
   cursor->add_succ(bb);
   bb->add_pred(cursor);
@@ -60,8 +60,8 @@ Instruction *IRBuilder::push_br(Value *cond, BasicBlock *T, BasicBlock *F) {
       cursor->push_instr(OP_BR, ctx.get_type(Type("void", 0, 0)));
 
   br_instr->add_operand(cond);
-  br_instr->add_label(T->get_name());
-  br_instr->add_label(F->get_name());
+  br_instr->add_label(T->label());
+  br_instr->add_label(F->label());
 
   cond->add_user(br_instr);
 
@@ -190,17 +190,17 @@ Value *IRGenerator::gen(Program &program, Ast::NodePtr ptr) {
   auto node = ast.at(ptr);
   switch (node.type) {
   case Ast::AST_INT_LIT_EXPR: {
-    return ctx.new_value("inttmp", ast.get<Ast::IntLitData>(node));
+    return ctx.new_value("intlit", ast.get<Ast::IntLitData>(node));
   } break;
 
   case Ast::AST_BOOL_LIT_EXPR: {
-    return ctx.new_value("booltmp", ast.get<Ast::BoolLitData>(node));
+    return ctx.new_value("boollit", ast.get<Ast::BoolLitData>(node));
   } break;
 
   case Ast::AST_ARR_LIT_EXPR: {
     auto arr_type = ctx.convert_ast_type_to_ir_type(ast, node.lhs);
     auto init_list = ast.get_array_of<Ast::NodePtr>(ast.at(node.rhs));
-    auto arr_ptr = ctx.new_value("arrtmp", arr_type);
+    auto arr_ptr = ctx.new_value("arrlit", arr_type);
     builder.push_alloca(arr_ptr, arr_type->get_base_type(),
                         arr_type->get_size());
 
@@ -265,7 +265,7 @@ Value *IRGenerator::gen(Program &program, Ast::NodePtr ptr) {
       if (!rhs)
         return nullptr;
 
-      auto var_val = ctx.new_value(var_name, var->get_type()->get_base_type());
+      auto var_val = ctx.new_value("vartmp", var->get_type()->get_base_type());
       builder.push_ld(var_val, var);
 
       Value *store_value = nullptr;
@@ -371,7 +371,7 @@ Value *IRGenerator::gen(Program &program, Ast::NodePtr ptr) {
     auto var_name = ast.get<Ast::StringData>(node);
     auto var_slot = program.lookup_symbol(var_name);
     auto result =
-        ctx.new_value(var_name, var_slot->get_type()->get_base_type());
+        ctx.new_value("identtmp", var_slot->get_type()->get_base_type());
     builder.push_ld(result, var_slot);
     return result;
   } break;
@@ -393,7 +393,7 @@ Value *IRGenerator::gen(Program &program, Ast::NodePtr ptr) {
     auto var_type = ctx.convert_ast_type_to_ir_type(ast, var_data.type);
     auto var_value = gen(program, var_data.value);
 
-    auto alloca = ctx.new_value(var_name, ctx.get_type(Type::ptr_to(var_type)));
+    auto alloca = ctx.new_value("deftmp", ctx.get_type(Type::ptr_to(var_type)));
     builder.push_alloca(alloca, var_type);
     builder.push_str(alloca, var_value);
     program.new_symbol(var_name, alloca);
@@ -433,7 +433,11 @@ Value *IRGenerator::gen(Program &program, Ast::NodePtr ptr) {
         auto arg_name = ast.get<Ast::StringData>(ast.at(param.ident));
         auto arg_type = ctx.convert_ast_type_to_ir_type(ast, param.type);
         auto alloca =
-            ctx.new_value("tmpalloc", ctx.get_type(Type::ptr_to(arg_type)));
+            ctx.new_value("alloctmp", ctx.get_type(Type::ptr_to(arg_type)));
+        auto arg_val = ctx.new_value("argtmp", arg_type);
+
+        builder.push_alloca(alloca, arg_type);
+        builder.push_ld(arg_val, alloca);
         program.new_symbol(arg_name, alloca);
       }
 
@@ -450,7 +454,7 @@ Value *IRGenerator::gen(Program &program, Ast::NodePtr ptr) {
     auto F = builder.get_cursor()->get_parent();
     auto conds = ast.get_array_of<Ast::NodePtr>(ast.at(node.lhs));
     auto blks = ast.get_array_of<Ast::NodePtr>(ast.at(node.rhs));
-    auto endif = std::make_unique<BasicBlock>(F, "endif");
+    auto endif = F->create_block("endif");
 
     // if (cond) {}
     if (conds.size() == 1 && blks.size() == 1) {

@@ -17,6 +17,8 @@ using u16 = uint16_t;
 using u32 = uint32_t;
 using u64 = uint64_t;
 
+// SourceLocation represents a source file
+// location.
 struct SourceLocation {
   const char *source_name;
   u32 byte_offset;
@@ -24,17 +26,22 @@ struct SourceLocation {
   u32 col;
 };
 
+// SourceSpan specifies the range within the source
+// file. Useful for defining ranges in the file.
 struct SourceSpan {
   SourceLocation start;
   SourceLocation end;
 };
 
-template <typename T> class Span {
+// Slice represents a non-owning slice of some region
+// of memory. It really is just a pointer and length
+// with some added machinery on top.
+template <typename T> class Slice {
 public:
   using iterator = T *;
   using const_iterator = const T *;
 
-  Span(T *data, u32 size) : data_(data), size_(size) {}
+  Slice(T *data, u32 size) : data_(data), size_(size) {}
   u32 size() const { return size_; }
   bool empty() const { return size_ == 0; }
 

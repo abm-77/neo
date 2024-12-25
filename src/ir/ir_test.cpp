@@ -23,7 +23,7 @@ TEST(IR, IrTest) {
       " c = arr[1] / b;"
       " var cond: bool = a < b;"
       " if (cond) { a += 1; }"
-      " if (1 < 2) { a += 1; } else if (2 < 3) { b += 1; } else { c += 1; }"
+      " if (1 < 2) { a = 1; } else if (2 < 3) { a = 2; } else { a = 3; }"
       " for (var t: int = 0; t < 10; t += 1) { a; }"
       " return b + 2;"
       "}");

@@ -18,7 +18,11 @@ ir_src = files(
   'src/ir/irgen.cpp',
 )
 
-compiler_src = frontend_src + ir_src
+codegen_src = files(
+  'src/codegen/codegen.cpp',
+)
+
+compiler_src = frontend_src + ir_src + codegen_src
 
 incdir = include_directories('./inc')
 executable(meson.project_name(), driver_src + compiler_src,  include_directories : incdir)
@@ -46,4 +50,16 @@ ir_test_exec = executable(
   include_directories : incdir,
 )
 test('ir', ir_test_exec)
+
+codegen_test_src = files(
+  'src/codegen/codegen_test.cpp',
+)
+codegen_test_exec = executable(
+  'codegen',
+  codegen_test_src + codegen_src + ir_src + frontend_src,
+  dependencies : [gtest_dep, gmock_dep],
+  include_directories : incdir,
+)
+test('codegen', codegen_test_exec)
+
 

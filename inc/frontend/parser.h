@@ -110,7 +110,7 @@ public:
 
   using StringData = std::string_view;
 
-  template <typename T> using ArrayData = Span<T>;
+  template <typename T> using ArrayData = Slice<T>;
 
   struct VarDefData {
     NodePtr type;
@@ -166,7 +166,7 @@ public:
   }
 
   template <typename T> ArrayData<T> get_array_of(Node node) const {
-    return Span(reinterpret_cast<T *>(data + node.lhs), node.rhs);
+    return Slice(reinterpret_cast<T *>(data + node.lhs), node.rhs);
   }
 
   template <> StringData get<StringData>(Node node) const {

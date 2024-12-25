@@ -221,19 +221,30 @@ void Instruction::debug_print() const {
   for (auto &operand : operands)
     std::cout << operand->get_name() << ", ";
 
-  for (auto &label : labels)
-    std::cout << label << ", ";
+  for (auto &label : labels) {
+    label.debug_print();
+    std::cout << ", ";
+  }
 
   std::cout << std::endl;
 }
 
+// Label
+void Label::debug_print() const {
+  std::cout << fn_name << "_" << name << "_" << number;
+}
+
 // BasicBlock
-BasicBlock::BasicBlock(Function *parent, std::string_view name)
-    : parent(parent), name(name) {}
+BasicBlock::BasicBlock(Function *parent, u32 number, std::string_view name)
+    : parent(parent), name(name), number(number) {}
 
 const std::string_view &BasicBlock::get_name() { return name; }
 
 Function *BasicBlock::get_parent() { return parent; }
+
+Label BasicBlock::label() const {
+  return Label{.fn_name = parent->get_name(), .name = name, .number = number};
+}
 
 std::vector<std::unique_ptr<Instruction>> &BasicBlock::get_instructions() {
   return instrs;
@@ -250,7 +261,8 @@ void BasicBlock::add_succ(BasicBlock *bb) { successors.push_back(bb); }
 
 void BasicBlock::debug_print() const {
   std::cout << std::endl;
-  std::cout << "BasicBlock: " << name << std::endl;
+  label().debug_print();
+  std::cout << ":" << std::endl;
   for (auto &instr : instrs)
     instr.get()->debug_print();
 }
@@ -271,13 +283,22 @@ const std::vector<std::unique_ptr<BasicBlock>> &Function::get_blocks() const {
 }
 
 BasicBlock *Function::add_block(std::string_view name) {
-  basic_blocks.push_back(std::make_unique<BasicBlock>(this, name));
+  if (!block_numbers.contains(name))
+    block_numbers[name] = 0;
+  basic_blocks.push_back(
+      std::make_unique<BasicBlock>(this, block_numbers[name]++, name));
   return basic_blocks.back().get();
 }
 
 BasicBlock *Function::add_block(std::unique_ptr<BasicBlock> block) {
   basic_blocks.push_back(std::move(block));
   return basic_blocks.back().get();
+}
+
+std::unique_ptr<BasicBlock> Function::create_block(std::string_view name) {
+  if (!block_numbers.contains(name))
+    block_numbers[name] = 0;
+  return std::make_unique<BasicBlock>(this, block_numbers[name]++, name);
 }
 
 b32 Function::empty() { return basic_blocks.empty(); }

@@ -13,7 +13,13 @@
 namespace neo {
 namespace ir {
 
-using Label = std::string_view;
+struct Label {
+  std::string_view fn_name;
+  std::string_view name;
+  u32 number;
+
+  void debug_print() const;
+};
 
 class Instruction;
 class Function;
@@ -181,9 +187,11 @@ private:
 
 class BasicBlock {
 public:
-  BasicBlock(Function *parent, std::string_view name = "");
+  BasicBlock(Function *parent, u32 number, std::string_view name = "");
 
   const std::string_view &get_name();
+
+  Label label() const;
 
   Function *get_parent();
 
@@ -201,6 +209,7 @@ private:
   std::vector<std::unique_ptr<Instruction>> instrs;
   std::vector<BasicBlock *> predecessors;
   std::vector<BasicBlock *> successors;
+  u32 number;
 };
 
 class Function {
@@ -218,8 +227,10 @@ public:
   void add_arg(Arg arg);
 
   const std::vector<std::unique_ptr<BasicBlock>> &get_blocks() const;
-  BasicBlock *add_block(std::string_view name = "");
+  BasicBlock *add_block(std::string_view name);
   BasicBlock *add_block(std::unique_ptr<BasicBlock> block);
+  std::unique_ptr<BasicBlock> create_block(std::string_view name);
+
   b32 empty();
 
   void set_return_type(Type *rtype);
@@ -231,6 +242,7 @@ private:
   Type *ret_type;
   std::string_view name;
   std::vector<Arg> args;
+  std::unordered_map<std::string_view, u32> block_numbers;
   std::vector<std::unique_ptr<BasicBlock>> basic_blocks;
 };
 
