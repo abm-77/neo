@@ -1,7 +1,22 @@
 LOG
 ====
 
-12/22/24
+12/25/24
+- [ ] switch from using string_views to strings to have more dynamic names
+- [ ] do some code cleanup
+- [ ] start codegen???
+
+12/24/24
+- [X] array lit irgen
+- [X] array index irgen
+- [X] pointer-array disambiguation (sorta)
+- [X] added some debug printing
+- [X] extended type registry with hashable types
+- [X] fixed some errors with if-chain irgen
+- [X] starting to name some of the values other than just random tmps
+
+
+12/23/24
 - [X] for stmt irgen 
 - [X] var def irgen 
 - [X] var assignment irgen 
@@ -9,7 +24,7 @@ LOG
 - [X] program symbol table 
 - [X] implement (stack) memory instructions in ir 
 
-12/22/24 - 12/23/24
+12/22/24
 - [X] design ir
 - [X] implement ir backend ops
 - [X] implement primitive literal expr irgen 

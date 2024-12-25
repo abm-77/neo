@@ -22,6 +22,14 @@ class IRContext;
 
 class Type {
 public:
+  struct Hash {
+    size_t operator()(const Type &type) const;
+  };
+  struct Equal {
+    b32 operator()(const Type &lhs, const Type &rhs) const;
+  };
+
+public:
   enum DerivedType {
     NONE,
     POINTER,
@@ -80,6 +88,8 @@ public:
   ConstantValue get_const_value();
   void set_const_value(ConstantValue value);
 
+  void debug_print() const;
+
 private:
   std::string_view name;
   Type *type;
@@ -126,6 +136,8 @@ enum InstructionOp {
   OP_ID
 };
 
+const char *op2str(InstructionOp op);
+
 class Instruction {
 public:
   Instruction(InstructionOp op, Type *type);
@@ -150,6 +162,8 @@ public:
   void add_user(Instruction *user);
 
   Type *get_type() const;
+
+  void debug_print() const;
 
 private:
   InstructionOp op;
@@ -179,6 +193,8 @@ public:
   void add_pred(BasicBlock *bb);
   void add_succ(BasicBlock *bb);
 
+  void debug_print() const;
+
 private:
   Function *parent;
   std::string_view name;
@@ -197,6 +213,7 @@ public:
   Function();
   Function(std::string_view name);
 
+  const std::string_view &get_name() const;
   const std::vector<Arg> &get_args();
   void add_arg(Arg arg);
 
@@ -207,6 +224,8 @@ public:
 
   void set_return_type(Type *rtype);
   Type *get_return_type();
+
+  void debug_print() const;
 
 private:
   Type *ret_type;
@@ -229,6 +248,8 @@ public:
   Function *get_function(std::string_view name);
   const std::unordered_map<std::string_view, Function> &get_functions();
 
+  void debug_print() const;
+
 private:
   std::string_view name;
   std::unordered_map<std::string_view, Function> functions;
@@ -237,7 +258,7 @@ private:
 
 class IRContext {
 public:
-  Type *get_type(Type type);
+  Type *get_type(const Type &type);
 
   Value *new_value(std::string_view name, Type *type);
   Value *new_value(std::string_view name, Value::ConstantValue value);
@@ -246,7 +267,8 @@ public:
                                     parse::Ast::NodePtr type_ptr);
 
 private:
-  std::unordered_map<std::string_view, std::unique_ptr<Type>> type_registry;
+  std::unordered_map<Type, std::unique_ptr<Type>, Type::Hash, Type::Equal>
+      type_registry;
   std::vector<std::unique_ptr<Value>> values;
 };
 

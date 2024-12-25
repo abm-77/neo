@@ -107,9 +107,12 @@ Instruction *IRBuilder::push_ret(Value *dest, Value *value) {
 }
 
 Instruction *IRBuilder::push_alloca(Value *dest, Type *type, i32 count) {
-  assert(count >= 1);
-  assert(dest->get_type()->get_derived_type() == Type::DerivedType::POINTER);
-  assert(*dest->get_type()->get_base_type() == *type);
+  assert(count >= 1 && "must alloc at least one item");
+  assert(dest->get_type()->get_derived_type() == Type::DerivedType::POINTER ||
+         dest->get_type()->get_derived_type() == Type::DerivedType::ARRAY &&
+             "destination must be array or pointer");
+  assert(dest->get_type()->get_base_type() == type &&
+         "destination base type must match allocated type");
 
   Instruction *alloca_instr = cursor->push_instr(OP_ALLOCA, dest->get_type());
   alloca_instr->set_dest(dest);
@@ -121,14 +124,17 @@ Instruction *IRBuilder::push_alloca(Value *dest, Type *type, i32 count) {
 }
 
 Instruction *IRBuilder::push_str(Value *dest, Value *value, Value *offset) {
-  assert(dest->get_type()->get_derived_type() == Type::DerivedType::POINTER);
-  assert(*dest->get_type()->get_base_type() == *value->get_type());
+  assert(dest->get_type()->get_derived_type() == Type::DerivedType::POINTER ||
+         dest->get_type()->get_derived_type() == Type::DerivedType::ARRAY &&
+             "destination must be array or pointer");
+  assert(dest->get_type()->get_base_type() == value->get_type() &&
+         "destination base type must match value type");
 
   Instruction *str_instr = cursor->push_instr(OP_STR, dest->get_type());
   str_instr->set_dest(dest);
+  str_instr->add_operand(value);
   if (offset)
     str_instr->add_operand(offset);
-  str_instr->add_operand(value);
 
   dest->set_def_instr(str_instr);
   value->add_user(str_instr);
@@ -137,14 +143,31 @@ Instruction *IRBuilder::push_str(Value *dest, Value *value, Value *offset) {
 }
 
 Instruction *IRBuilder::push_ld(Value *dest, Value *src, Value *offset) {
-  assert(src->get_type()->get_derived_type() == Type::DerivedType::POINTER);
-  assert(*dest->get_type() == *src->get_type()->get_base_type());
+  assert(src->get_type()->get_derived_type() == Type::DerivedType::POINTER ||
+         src->get_type()->get_derived_type() == Type::DerivedType::ARRAY &&
+             "source must be array or pointer");
+
+  // since we distinguish between pointers and arrays, we implicitly dereference
+  // all immediate pointers to arrays (i.e. *[]T -> []T / *T). the pointer in
+  // this instance points to the address of the array, which is the address of
+  // the first element. an actual pointer to an array would be **[]T -> *[]T /
+  // **T.
+  assert(
+      (((src->get_type()->get_derived_type() == Type::DerivedType::POINTER) &&
+        (src->get_type()->get_base_type()->get_derived_type() ==
+         Type::DerivedType::ARRAY) &&
+        dest->get_type() ==
+            src->get_type()->get_base_type()->get_base_type()) ||
+
+       (src->get_type()->get_derived_type() == Type::DerivedType::POINTER) &&
+           dest->get_type() == src->get_type()->get_base_type()) &&
+      "destination type must match value base type");
 
   Instruction *ld_instr = cursor->push_instr(OP_LD, dest->get_type());
   ld_instr->set_dest(dest);
+  ld_instr->add_operand(src);
   if (offset)
     ld_instr->add_operand(offset);
-  ld_instr->add_operand(src);
 
   dest->set_def_instr(ld_instr);
   src->add_user(ld_instr);
@@ -172,6 +195,40 @@ Value *IRGenerator::gen(Program &program, Ast::NodePtr ptr) {
 
   case Ast::AST_BOOL_LIT_EXPR: {
     return ctx.new_value("booltmp", ast.get<Ast::BoolLitData>(node));
+  } break;
+
+  case Ast::AST_ARR_LIT_EXPR: {
+    auto arr_type = ctx.convert_ast_type_to_ir_type(ast, node.lhs);
+    auto init_list = ast.get_array_of<Ast::NodePtr>(ast.at(node.rhs));
+    auto arr_ptr = ctx.new_value("arrtmp", arr_type);
+    builder.push_alloca(arr_ptr, arr_type->get_base_type(),
+                        arr_type->get_size());
+
+    for (i32 i = 0; i < init_list.size(); i++) {
+      auto init_val = gen(program, init_list[i]);
+      builder.push_str(
+          arr_ptr, init_val,
+          ctx.new_value("offset",
+                        i * (i32)arr_type->get_base_type()->get_size()));
+    }
+
+    return arr_ptr;
+  } break;
+
+  case Ast::AST_ARR_INDEX_EXPR: {
+    auto arr_name = ast.get<Ast::StringData>(ast.at(node.lhs));
+    auto i = static_cast<i32>(node.rhs);
+    auto arr_ptr = program.lookup_symbol(arr_name);
+    if (!arr_ptr)
+      return nullptr;
+    auto arr_type = arr_ptr->get_type()->get_base_type();
+
+    auto result = ctx.new_value("arridxtmp", arr_type->get_base_type());
+    builder.push_ld(
+        result, arr_ptr,
+        ctx.new_value("offset",
+                      i * (i32)arr_type->get_base_type()->get_size()));
+    return result;
   } break;
 
   case Ast::AST_PREFIX_EXPR: {
@@ -208,7 +265,7 @@ Value *IRGenerator::gen(Program &program, Ast::NodePtr ptr) {
       if (!rhs)
         return nullptr;
 
-      auto var_val = ctx.new_value("var_val", var->get_type()->get_base_type());
+      auto var_val = ctx.new_value(var_name, var->get_type()->get_base_type());
       builder.push_ld(var_val, var);
 
       Value *store_value = nullptr;
@@ -313,7 +370,8 @@ Value *IRGenerator::gen(Program &program, Ast::NodePtr ptr) {
   case Ast::AST_IDENT_EXPR: {
     auto var_name = ast.get<Ast::StringData>(node);
     auto var_slot = program.lookup_symbol(var_name);
-    auto result = ctx.new_value("ldtmp", var_slot->get_type()->get_base_type());
+    auto result =
+        ctx.new_value(var_name, var_slot->get_type()->get_base_type());
     builder.push_ld(result, var_slot);
     return result;
   } break;
@@ -335,7 +393,8 @@ Value *IRGenerator::gen(Program &program, Ast::NodePtr ptr) {
     auto var_type = ctx.convert_ast_type_to_ir_type(ast, var_data.type);
     auto var_value = gen(program, var_data.value);
 
-    auto alloca = ctx.new_value("deftmp", ctx.get_type(Type::ptr_to(var_type)));
+    auto alloca = ctx.new_value(var_name, ctx.get_type(Type::ptr_to(var_type)));
+    builder.push_alloca(alloca, var_type);
     builder.push_str(alloca, var_value);
     program.new_symbol(var_name, alloca);
 
@@ -435,18 +494,17 @@ Value *IRGenerator::gen(Program &program, Ast::NodePtr ptr) {
     }
     // if (cond0) {} else if (cond1) ... else {}
     else {
-      auto cond_header = F->add_block("cond_header");
+      auto *cond_header = F->add_block("cond_header");
       builder.push_jmp(cond_header);
 
       i32 i = 0;
       for (; i < conds.size() - 1; i++) {
+        builder.set_cursor(cond_header);
         auto cond = gen(program, conds[i]);
         auto stmts = ast.get_array_of<Ast::NodePtr>(ast.at(blks[i]));
 
-        builder.set_cursor(cond_header);
-
         auto me = F->add_block("me");
-        auto next_cond_header = F->add_block("next_cond_header");
+        auto *next_cond_header = F->add_block("next_cond_header");
         builder.push_br(cond, me, next_cond_header);
 
         builder.set_cursor(me);
@@ -459,11 +517,10 @@ Value *IRGenerator::gen(Program &program, Ast::NodePtr ptr) {
         cond_header = next_cond_header;
       }
 
+      builder.set_cursor(cond_header);
       auto cond = gen(program, i);
       auto stmts = ast.get_array_of<Ast::NodePtr>(ast.at(blks[i]));
       auto me = F->add_block("me");
-
-      builder.set_cursor(cond_header);
       if (blks.size() == conds.size()) {
         builder.push_br(cond, me, endif.get());
         builder.set_cursor(me);

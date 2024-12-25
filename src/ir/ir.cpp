@@ -1,3 +1,4 @@
+#include <iostream>
 #include <ir/ir.h>
 
 #include <assert.h>
@@ -5,6 +6,14 @@
 #include <optional>
 #include <string_view>
 #include <variant>
+
+namespace std {
+template <> struct hash<neo::ir::Type *> {
+  size_t operator()(const neo::ir::Type *type) const {
+    return neo::ir::Type::Hash()(*type);
+  }
+};
+} // namespace std
 
 namespace neo {
 namespace ir {
@@ -14,19 +23,39 @@ Type::Type(std::string_view name, u32 size, u32 align, DerivedType derived_type,
     : name(name), size(size), alignment(align), derived_type(derived_type),
       base_type(base_type) {}
 
+size_t Type::Hash::operator()(const Type &type) const {
+  size_t hash = std::hash<int>()(type.derived_type);
+
+  hash ^= std::hash<std::string_view>()(type.name) + +0x9e3779b9 + (hash << 6) +
+          (hash >> 2);
+
+  hash ^=
+      std::hash<size_t>()(type.size) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+
+  hash ^= std::hash<size_t>()(type.alignment) + 0x9e3779b9 + (hash << 6) +
+          (hash >> 2);
+
+  hash ^=
+      std::hash<size_t>()(type.size) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+
+  if (type.base_type) {
+    hash ^= std::hash<const Type *>()(type.base_type) + 0x9e3779b9 +
+            (hash << 6) + (hash >> 2);
+  }
+  return hash;
+}
+
+b32 Type::Equal::operator()(const Type &lhs, const Type &rhs) const {
+  return lhs == rhs;
+}
+
 Type Type::arr_of(Type *type, u32 size) {
-  return Type(
-      "array(" + std::string(type->get_name().begin(), type->get_name().end()) +
-          ")",
-      type->get_size() * size, type->get_alignment(), Type::DerivedType::ARRAY,
-      type);
+  return Type(type->get_name(), type->get_size() * size, type->get_alignment(),
+              Type::DerivedType::ARRAY, type);
 }
 
 Type Type::ptr_to(Type *type) {
-  return Type(
-      "ptr(" + std::string(type->get_name().begin(), type->get_name().end()) +
-          ")",
-      8, 8, Type::DerivedType::POINTER, type);
+  return Type(type->get_name(), 8, 8, Type::DerivedType::POINTER, type);
 }
 
 const std::string_view &Type::get_name() const { return name; }
@@ -41,12 +70,12 @@ Type::DerivedType Type::get_derived_type() const { return derived_type; }
 Type *Type::get_base_type() const { return base_type; }
 
 b32 Type::operator==(const Type &other) const {
-  b32 base_eq =
-      (!base_type && !other.base_type) ||
-      ((base_type && other.base_type) && (*base_type == *other.base_type));
   return name == other.name && size == other.size &&
-         derived_type == other.derived_type && base_eq;
+         alignment == other.alignment && derived_type == other.derived_type &&
+         ((base_type == nullptr && other.base_type == nullptr) ||
+          ((base_type && other.base_type) && (*base_type == *other.base_type)));
 }
+
 b32 Type::operator!=(const Type &other) const { return !(*this == other); }
 
 // Value
@@ -80,6 +109,73 @@ Value::ConstantValue Value::get_const_value() { return constant_value.value(); }
 void Value::set_const_value(ConstantValue value) { constant_value = value; }
 
 // Instruction
+const char *op2str(InstructionOp op) {
+  switch (op) {
+  // Arithmetic
+  case OP_ADD:
+    return "add";
+  case OP_SUB:
+    return "sub";
+  case OP_MUL:
+    return "mul";
+  case OP_DIV:
+    return "div";
+  case OP_NEG:
+    return "neg";
+
+  // Logical
+  case OP_NOT:
+    return "not";
+  case OP_AND:
+    return "and";
+  case OP_OR:
+    return "or";
+
+  // Comparison
+  case OP_CEQ:
+    return "ceq"; // compare equal
+  case OP_CNE:
+    return "cne"; // compare not equal
+  case OP_CLT:
+    return "clt"; // compare less than
+  case OP_CGT:
+    return "cgt"; // compare greater than
+  case OP_CLE:
+    return "cle"; // compare less than or equal
+  case OP_CGE:
+    return "cge"; // compare greater than or equal
+
+  // Control
+  case OP_JMP:
+    return "jmp"; // unconditional jump
+  case OP_BR:
+    return "br"; // branch (conditional jump)
+  case OP_CALL:
+    return "call";
+  case OP_RET:
+    return "ret";
+  case OP_PHI:
+    return "phi";
+
+  // Memory
+  case OP_FREE:
+    return "free";
+  case OP_ALLOCA:
+    return "alloca";
+  case OP_LD:
+    return "ld"; // load
+  case OP_STR:
+    return "str"; // store
+
+  // Misc
+  case OP_ID:
+    return "id";
+
+  default:
+    return "unknown";
+  }
+};
+
 Instruction::Instruction(InstructionOp op, Type *type)
     : op(op), type(type), dest(nullptr), has_side_effects(false) {}
 
@@ -113,6 +209,24 @@ void Instruction::add_user(Instruction *user) { users.push_back(user); }
 
 Type *Instruction::get_type() const { return type; }
 
+void Instruction::debug_print() const {
+  std::cout << op2str(op) << " ";
+
+  if (dest)
+    std::cout << dest->get_name() << ", ";
+
+  if (function)
+    std::cout << function->get_name() << ", ";
+
+  for (auto &operand : operands)
+    std::cout << operand->get_name() << ", ";
+
+  for (auto &label : labels)
+    std::cout << label << ", ";
+
+  std::cout << std::endl;
+}
+
 // BasicBlock
 BasicBlock::BasicBlock(Function *parent, std::string_view name)
     : parent(parent), name(name) {}
@@ -131,12 +245,22 @@ Instruction *BasicBlock::push_instr(InstructionOp op, Type *type) {
 }
 
 void BasicBlock::add_pred(BasicBlock *bb) { predecessors.push_back(bb); }
+
 void BasicBlock::add_succ(BasicBlock *bb) { successors.push_back(bb); }
+
+void BasicBlock::debug_print() const {
+  std::cout << std::endl;
+  std::cout << "BasicBlock: " << name << std::endl;
+  for (auto &instr : instrs)
+    instr.get()->debug_print();
+}
 
 // Function
 Function::Function() {}
 
 Function::Function(std::string_view name) : name(name) {}
+
+const std::string_view &Function::get_name() const { return name; }
 
 const std::vector<Function::Arg> &Function::get_args() { return args; }
 
@@ -161,6 +285,13 @@ b32 Function::empty() { return basic_blocks.empty(); }
 void Function::set_return_type(Type *rtype) { ret_type = rtype; }
 
 Type *Function::get_return_type() { return ret_type; };
+
+void Function::debug_print() const {
+  std::cout << std::endl;
+  std::cout << "Function: " << name << std::endl;
+  for (auto &bb : basic_blocks)
+    bb.get()->debug_print();
+}
 
 // Program
 Program::Program(IRContext &ctx, std::string_view name) : name(name) {}
@@ -206,14 +337,20 @@ Program::get_symbol_table() {
   return scopes.back();
 }
 
+void Program::debug_print() const {
+  std::cout << "Program: " << name << std::endl;
+  for (auto &[_, func] : functions)
+    func.debug_print();
+}
+
 // Context
-Type *IRContext::get_type(Type type) {
-  if (type_registry.contains(type.get_name()))
-    return type_registry[type.get_name()].get();
+Type *IRContext::get_type(const Type &type) {
+  auto it = type_registry.find(type);
+  if (it != type_registry.end())
+    return it->second.get();
 
-  type_registry[type.get_name()] = std::make_unique<Type>(type);
-
-  return type_registry[type.get_name()].get();
+  type_registry[type] = std::make_unique<Type>(type);
+  return type_registry[type].get();
 }
 
 Value *IRContext::new_value(std::string_view name, Type *type) {
@@ -227,7 +364,7 @@ Value *IRContext::new_value(std::string_view name, Value::ConstantValue value) {
         std::make_unique<Value>(name, get_type(Type("int", 4, 4)), value));
   } else if (auto *v = std::get_if<b32>(&value)) {
     values.push_back(
-        std::make_unique<Value>(name, get_type(Type("bool", 4, 4)), value));
+        std::make_unique<Value>(name, get_type(Type("bool", 1, 1)), value));
   } else if (auto *v = std::get_if<f32>(&value)) {
     values.push_back(
         std::make_unique<Value>(name, get_type(Type("float", 4, 4)), value));
@@ -247,7 +384,7 @@ Type *IRContext::convert_ast_type_to_ir_type(parse::Ast &ast,
     case AstPrim::INT:
       return get_type(Type("int", 4, 4));
     case AstPrim::BOOL:
-      return get_type(Type("bool", 4, 4));
+      return get_type(Type("bool", 1, 1));
     case AstPrim::FLOAT:
       return get_type(Type("float", 4, 4));
     default:

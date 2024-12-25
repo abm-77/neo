@@ -204,16 +204,14 @@ Ast::NodePtr Parser::parse_arr_lit_expr() {
   auto el_type = parse_type();
   auto init_list =
       parse_expr_list(lex::TOKEN_LEFT_BRACE, lex::TOKEN_RIGHT_BRACE);
-
   i32 n = (capacity.has_value())
               ? capacity.value()
               : ast.get_array_of<Ast::NodePtr>(ast.at(init_list)).size();
 
-  Ast::ArrayLitData data = {
-      .type = ast.register_type(Ast::Type(Ast::Type::Kind::ARRAY, el_type, n)),
-      .init_list = init_list};
-  return ast.make_node(Ast::AST_ARR_LIT_EXPR, n,
-                       ast.alloc_data<Ast::ArrayLitData>(data));
+  return ast.make_node(
+      Ast::AST_ARR_LIT_EXPR,
+      ast.register_type(Ast::Type(Ast::Type::Kind::ARRAY, el_type, n)),
+      init_list);
 }
 
 Ast::NodePtr Parser::parse_arr_index_expr(Ast::NodePtr arr) {

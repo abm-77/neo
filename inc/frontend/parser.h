@@ -39,7 +39,7 @@ public:
     AST_INT_LIT_EXPR,   // lhs = value
     AST_BOOL_LIT_EXPR,  // lhs = value
     AST_STR_LIT_EXPR,   // lhs -> { string }
-    AST_ARR_LIT_EXPR,   // lhs = size, rhs -> { type, init_list }
+    AST_ARR_LIT_EXPR,   // lhs = type, rhs = init_list
     AST_ARR_INDEX_EXPR, // lhs = ident, rhs = index
     AST_PREFIX_EXPR,    // lhs = value, rhs prefix
     AST_INFIX_EXPR,     // lhs = lhs (of binop), rhs -> { op, rhs }
@@ -107,10 +107,6 @@ public:
 public:
   using IntLitData = i32;
   using BoolLitData = b32;
-  struct ArrayLitData {
-    NodePtr type;
-    i32 init_list;
-  };
 
   using StringData = std::string_view;
 
