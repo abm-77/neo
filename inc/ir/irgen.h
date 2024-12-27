@@ -39,6 +39,9 @@ public:
   Program make_program();
   Value *gen(Program &program, parse::Ast::NodePtr node);
 
+public:
+  void mem2reg(ir::Function &func);
+
 private:
   IRContext ctx;
   IRBuilder builder;

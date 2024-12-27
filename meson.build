@@ -16,6 +16,7 @@ frontend_src = files(
 ir_src = files(
   'src/ir/ir.cpp',
   'src/ir/irgen.cpp',
+  'src/ir/iropt.cpp',
 )
 
 codegen_src = files(

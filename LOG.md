@@ -1,6 +1,12 @@
 LOG
 ====
 
+12/26/24
+- [X] calculate dominators
+- [X] calculate immediate dominators
+- [X] calculate dominator trees
+- [X] calculate dominance frontiers
+
 12/25/24
 - [X] generate unique label and block names 
 - [X] flesh out debug print more

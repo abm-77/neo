@@ -94,7 +94,12 @@ public:
   ConstantValue get_const_value();
   void set_const_value(ConstantValue value);
 
+  void replace_all_uses_with(Value *value);
+
   void debug_print() const;
+
+  b32 alive();
+  void kill();
 
 private:
   std::string_view name;
@@ -102,6 +107,7 @@ private:
   Instruction *def_instr;
   std::vector<Instruction *> users;
   std::optional<ConstantValue> constant_value;
+  b32 dead;
 };
 
 enum InstructionOp {
@@ -146,28 +152,33 @@ const char *op2str(InstructionOp op);
 
 class Instruction {
 public:
-  Instruction(InstructionOp op, Type *type);
+  Instruction(BasicBlock *parent_block, InstructionOp op, Type *type);
 
   InstructionOp get_op() const;
   void set_op(InstructionOp new_op);
 
-  const std::vector<Value *> &get_operands() const;
+  std::vector<Value *> &get_operands();
+  Value *get_operand(u32 idx);
   void add_operand(Value *operand);
+  void replace_operand(Value *oldv, Value *newv);
 
   Function *get_function() const;
   void set_function(Function *function);
 
+  BasicBlock *get_parent_block();
+
   const std::vector<Label> &get_labels() const;
   void add_label(Label label);
 
-  b32 has_dest() const;
   Value *get_dest() const;
-  void set_dest(Value *res);
 
-  const std::vector<Instruction *> get_users() const;
+  std::vector<Instruction *> get_users();
   void add_user(Instruction *user);
 
   Type *get_type() const;
+
+  b32 alive();
+  void kill();
 
   void debug_print() const;
 
@@ -175,7 +186,6 @@ private:
   InstructionOp op;
   Type *type;
 
-  Value *dest;
   Function *function;
   std::vector<Label> labels;
   std::vector<Value *> operands;
@@ -183,6 +193,7 @@ private:
   std::vector<Instruction *> users;
   BasicBlock *parent_block;
   b32 has_side_effects;
+  b32 dead;
 };
 
 class BasicBlock {
@@ -195,13 +206,20 @@ public:
 
   Function *get_parent();
 
+  Instruction *prepend_instr(InstructionOp op, Type *type);
+  Instruction *prepend_instr(std::unique_ptr<Instruction> instr);
+
   Instruction *push_instr(InstructionOp op, Type *type);
   std::vector<std::unique_ptr<Instruction>> &get_instructions();
 
   void add_pred(BasicBlock *bb);
+  const std::vector<BasicBlock *> &get_preds();
   void add_succ(BasicBlock *bb);
+  const std::vector<BasicBlock *> &get_succs();
 
   void debug_print() const;
+
+  void remove_dead_instrs();
 
 private:
   Function *parent;
@@ -226,7 +244,7 @@ public:
   const std::vector<Arg> &get_args();
   void add_arg(Arg arg);
 
-  const std::vector<std::unique_ptr<BasicBlock>> &get_blocks() const;
+  std::vector<std::unique_ptr<BasicBlock>> &get_blocks();
   BasicBlock *add_block(std::string_view name);
   BasicBlock *add_block(std::unique_ptr<BasicBlock> block);
   std::unique_ptr<BasicBlock> create_block(std::string_view name);
@@ -235,6 +253,8 @@ public:
 
   void set_return_type(Type *rtype);
   Type *get_return_type();
+
+  void remove_dead_instrs();
 
   void debug_print() const;
 
@@ -258,7 +278,7 @@ public:
 
   Function *new_function(std::string_view name);
   Function *get_function(std::string_view name);
-  const std::unordered_map<std::string_view, Function> &get_functions();
+  std::unordered_map<std::string_view, Function> &get_functions();
 
   void debug_print() const;
 

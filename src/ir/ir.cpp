@@ -80,11 +80,12 @@ b32 Type::operator!=(const Type &other) const { return !(*this == other); }
 
 // Value
 Value::Value(std::string_view name, Type *type)
-    : name(name), type(type), def_instr(nullptr), constant_value(std::nullopt) {
-}
+    : name(name), type(type), def_instr(nullptr), constant_value(std::nullopt),
+      dead(false) {}
 
 Value::Value(std::string_view name, Type *type, ConstantValue value)
-    : name(name), type(type), def_instr(nullptr), constant_value(value) {}
+    : name(name), type(type), def_instr(nullptr), constant_value(value),
+      dead(false) {}
 
 const std::string_view Value::get_name() const { return name; }
 
@@ -107,6 +108,18 @@ bool Value::is_const_value() const { return constant_value.has_value(); }
 Value::ConstantValue Value::get_const_value() { return constant_value.value(); }
 
 void Value::set_const_value(ConstantValue value) { constant_value = value; }
+
+void Value::kill() { dead = true; }
+
+void Value::replace_all_uses_with(Value *value) {
+  if (this == value)
+    return;
+  for (auto user : users)
+    user->replace_operand(this, value);
+  users.clear();
+}
+
+b32 Value::alive() { return !dead; }
 
 // Instruction
 const char *op2str(InstructionOp op) {
@@ -176,30 +189,27 @@ const char *op2str(InstructionOp op) {
   }
 };
 
-Instruction::Instruction(InstructionOp op, Type *type)
-    : op(op), type(type), dest(nullptr), has_side_effects(false) {}
+Instruction::Instruction(BasicBlock *parent, InstructionOp op, Type *type)
+    : op(op), type(type), parent_block(parent), has_side_effects(false),
+      dead(false) {}
 
+const std::vector<Label> &Instruction::get_labels() const { return labels; }
+BasicBlock *Instruction::get_parent_block() { return parent_block; }
 InstructionOp Instruction::get_op() const { return op; }
 
 void Instruction::set_op(InstructionOp new_op) { op = new_op; }
 
-const std::vector<Value *> &Instruction::get_operands() const {
-  return operands;
-}
+std::vector<Value *> &Instruction::get_operands() { return operands; }
+
+Value *Instruction::get_operand(u32 idx) { return operands[idx]; }
 
 void Instruction::add_label(Label label) { labels.push_back(label); }
 
 void Instruction::add_operand(Value *operand) { operands.push_back(operand); }
 
-b32 Instruction::has_dest() const { return dest != nullptr; };
+Value *Instruction::get_dest() const { return operands[0]; }
 
-Value *Instruction::get_dest() const { return dest; }
-
-void Instruction::set_dest(Value *new_dest) { dest = new_dest; }
-
-const std::vector<Instruction *> Instruction::get_users() const {
-  return users;
-}
+std::vector<Instruction *> Instruction::get_users() { return users; }
 
 Function *Instruction::get_function() const { return function; }
 
@@ -209,11 +219,19 @@ void Instruction::add_user(Instruction *user) { users.push_back(user); }
 
 Type *Instruction::get_type() const { return type; }
 
+void Instruction::replace_operand(Value *oldv, Value *newv) {
+  for (Value *&operand : operands) {
+    if (operand == oldv)
+      operand = newv;
+  }
+}
+
+b32 Instruction::alive() { return !dead; }
+
+void Instruction::kill() { dead = true; }
+
 void Instruction::debug_print() const {
   std::cout << op2str(op) << " ";
-
-  if (dest)
-    std::cout << dest->get_name() << ", ";
 
   if (function)
     std::cout << function->get_name() << ", ";
@@ -251,9 +269,24 @@ std::vector<std::unique_ptr<Instruction>> &BasicBlock::get_instructions() {
 }
 
 Instruction *BasicBlock::push_instr(InstructionOp op, Type *type) {
-  instrs.push_back(std::make_unique<Instruction>(op, type));
+  instrs.push_back(std::make_unique<Instruction>(this, op, type));
   return instrs.back().get();
 }
+
+Instruction *BasicBlock::prepend_instr(InstructionOp op, Type *type) {
+  instrs.insert(instrs.begin(), std::make_unique<Instruction>(this, op, type));
+  return instrs.front().get();
+}
+
+Instruction *BasicBlock::prepend_instr(std::unique_ptr<Instruction> instr) {
+  instrs.insert(instrs.begin(), std::move(instr));
+  return instrs.front().get();
+}
+
+const std::vector<BasicBlock *> &BasicBlock::get_preds() {
+  return predecessors;
+}
+const std::vector<BasicBlock *> &BasicBlock::get_succs() { return successors; }
 
 void BasicBlock::add_pred(BasicBlock *bb) { predecessors.push_back(bb); }
 
@@ -267,6 +300,15 @@ void BasicBlock::debug_print() const {
     instr.get()->debug_print();
 }
 
+void BasicBlock::remove_dead_instrs() {
+  for (auto it = instrs.begin(); it != instrs.end();) {
+    if (!it->get()->alive())
+      it = instrs.erase(it);
+    else
+      it++;
+  }
+}
+
 // Function
 Function::Function() {}
 
@@ -278,7 +320,7 @@ const std::vector<Function::Arg> &Function::get_args() { return args; }
 
 void Function::add_arg(Function::Arg arg) { args.push_back(arg); }
 
-const std::vector<std::unique_ptr<BasicBlock>> &Function::get_blocks() const {
+std::vector<std::unique_ptr<BasicBlock>> &Function::get_blocks() {
   return basic_blocks;
 }
 
@@ -314,10 +356,15 @@ void Function::debug_print() const {
     bb.get()->debug_print();
 }
 
+void Function::remove_dead_instrs() {
+  for (auto &bb : basic_blocks)
+    bb->remove_dead_instrs();
+}
+
 // Program
 Program::Program(IRContext &ctx, std::string_view name) : name(name) {}
 
-const std::unordered_map<std::string_view, Function> &Program::get_functions() {
+std::unordered_map<std::string_view, Function> &Program::get_functions() {
   return functions;
 }
 

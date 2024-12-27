@@ -16,7 +16,7 @@ IRBuilder::IRBuilder(IRContext &ctx) : ctx(ctx) {}
 
 Instruction *IRBuilder::push_unop(InstructionOp op, Value *dest, Value *value) {
   Instruction *un_instr = cursor->push_instr(op, dest->get_type());
-  un_instr->set_dest(dest);
+  un_instr->add_operand(dest);
   un_instr->add_operand(value);
 
   dest->set_def_instr(un_instr);
@@ -28,7 +28,7 @@ Instruction *IRBuilder::push_unop(InstructionOp op, Value *dest, Value *value) {
 Instruction *IRBuilder::push_binop(InstructionOp op, Value *dest, Value *lhs,
                                    Value *rhs) {
   Instruction *bin_instr = cursor->push_instr(op, dest->get_type());
-  bin_instr->set_dest(dest);
+  bin_instr->add_operand(dest);
   bin_instr->add_operand(lhs);
   bin_instr->add_operand(rhs);
 
@@ -78,7 +78,7 @@ Instruction *IRBuilder::push_call(Value *dest, Function *callee,
   assert(callee->get_return_type() == dest->get_type());
 
   Instruction *call_instr = cursor->push_instr(OP_CALL, dest->get_type());
-  call_instr->set_dest(dest);
+  call_instr->add_operand(dest);
   call_instr->set_function(callee);
 
   auto callee_args = callee->get_args();
@@ -97,7 +97,7 @@ Instruction *IRBuilder::push_ret(Value *dest, Value *value) {
   assert(dest->get_type() == value->get_type());
 
   Instruction *ret_instr = cursor->push_instr(OP_RET, dest->get_type());
-  ret_instr->set_dest(dest);
+  ret_instr->add_operand(dest);
   ret_instr->add_operand(value);
 
   dest->set_def_instr(ret_instr);
@@ -115,10 +115,13 @@ Instruction *IRBuilder::push_alloca(Value *dest, Type *type, i32 count) {
          "destination base type must match allocated type");
 
   Instruction *alloca_instr = cursor->push_instr(OP_ALLOCA, dest->get_type());
-  alloca_instr->set_dest(dest);
-  alloca_instr->add_operand(ctx.new_value("count", count));
+  alloca_instr->add_operand(dest);
+
+  auto count_val = ctx.new_value("count", count);
+  alloca_instr->add_operand(count_val);
 
   dest->set_def_instr(alloca_instr);
+  count_val->add_user(alloca_instr);
 
   return alloca_instr;
 }
@@ -131,13 +134,15 @@ Instruction *IRBuilder::push_str(Value *dest, Value *value, Value *offset) {
          "destination base type must match value type");
 
   Instruction *str_instr = cursor->push_instr(OP_STR, dest->get_type());
-  str_instr->set_dest(dest);
+  str_instr->add_operand(dest);
   str_instr->add_operand(value);
   if (offset)
     str_instr->add_operand(offset);
 
   dest->set_def_instr(str_instr);
   value->add_user(str_instr);
+  if (offset)
+    offset->add_user(str_instr);
 
   return str_instr;
 }
@@ -164,13 +169,15 @@ Instruction *IRBuilder::push_ld(Value *dest, Value *src, Value *offset) {
       "destination type must match value base type");
 
   Instruction *ld_instr = cursor->push_instr(OP_LD, dest->get_type());
-  ld_instr->set_dest(dest);
+  ld_instr->add_operand(dest);
   ld_instr->add_operand(src);
   if (offset)
     ld_instr->add_operand(offset);
 
   dest->set_def_instr(ld_instr);
   src->add_user(ld_instr);
+  if (offset)
+    offset->add_user(ld_instr);
 
   return ld_instr;
 }
@@ -265,33 +272,36 @@ Value *IRGenerator::gen(Program &program, Ast::NodePtr ptr) {
       if (!rhs)
         return nullptr;
 
-      auto var_val = ctx.new_value("vartmp", var->get_type()->get_base_type());
-      builder.push_ld(var_val, var);
-
-      Value *store_value = nullptr;
+      Value *new_value = nullptr;
       if (infix_data.op == TOKEN_EQUAL) {
-        store_value = rhs;
+        new_value = rhs;
       } else {
-        store_value = ctx.new_value("inter", var_val->get_type());
+        auto old_val =
+            ctx.new_value("oldtmp", var->get_type()->get_base_type());
+        builder.push_ld(old_val, var);
+        new_value = ctx.new_value("newtmp", old_val->get_type());
+
         switch (infix_data.op) {
         case TOKEN_MINUS_EQUAL:
-          builder.push_binop(OP_SUB, store_value, var_val, rhs);
+          builder.push_binop(OP_SUB, new_value, old_val, rhs);
           break;
         case TOKEN_PLUS_EQUAL:
-          builder.push_binop(OP_ADD, store_value, var_val, rhs);
+          builder.push_binop(OP_ADD, new_value, old_val, rhs);
           break;
         case TOKEN_SLASH_EQUAL:
-          builder.push_binop(OP_DIV, store_value, var_val, rhs);
+          builder.push_binop(OP_DIV, new_value, old_val, rhs);
           break;
         case TOKEN_STAR_EQUAL:
-          builder.push_binop(OP_MUL, store_value, var_val, rhs);
+          builder.push_binop(OP_MUL, new_value, old_val, rhs);
           break;
         default:
           return nullptr;
         }
       }
-      builder.push_str(var, store_value);
-      return store_value;
+
+      builder.push_str(var, new_value);
+
+      return new_value;
     }
 
     auto lhs = gen(program, node.lhs); // lhs is stored within node
@@ -437,7 +447,7 @@ Value *IRGenerator::gen(Program &program, Ast::NodePtr ptr) {
         auto arg_val = ctx.new_value("argtmp", arg_type);
 
         builder.push_alloca(alloca, arg_type);
-        builder.push_ld(arg_val, alloca);
+        builder.push_str(alloca, arg_val);
         program.new_symbol(arg_name, alloca);
       }
 
@@ -522,7 +532,7 @@ Value *IRGenerator::gen(Program &program, Ast::NodePtr ptr) {
       }
 
       builder.set_cursor(cond_header);
-      auto cond = gen(program, i);
+      auto cond = gen(program, conds[i]);
       auto stmts = ast.get_array_of<Ast::NodePtr>(ast.at(blks[i]));
       auto me = F->add_block("me");
       if (blks.size() == conds.size()) {
@@ -610,6 +620,7 @@ Value *IRGenerator::gen(Program &program, Ast::NodePtr ptr) {
     for (auto stmt : stmts)
       gen(program, stmt);
     gen(program, for_data.cont);
+
     builder.push_jmp(header);
     program.pop_scope();
 
