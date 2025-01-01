@@ -320,6 +320,7 @@ const std::vector<Function::Arg> &Function::get_args() { return args; }
 
 void Function::add_arg(Function::Arg arg) { args.push_back(arg); }
 
+BasicBlock *Function::get_entry() { return basic_blocks.at(0).get(); }
 std::vector<std::unique_ptr<BasicBlock>> &Function::get_blocks() {
   return basic_blocks;
 }

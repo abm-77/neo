@@ -165,12 +165,12 @@ public:
     return static_cast<BoolLitData>(node.lhs);
   }
 
-  template <typename T> ArrayData<T> get_array_of(Node node) const {
-    return Slice(reinterpret_cast<T *>(data + node.lhs), node.rhs);
-  }
-
   template <> StringData get<StringData>(Node node) const {
     return *reinterpret_cast<StringData *>(data + node.lhs);
+  }
+
+  template <typename T> ArrayData<T> get_array_of(Node node) const {
+    return Slice(reinterpret_cast<T *>(data + node.lhs), node.rhs);
   }
 
   const std::vector<Ast::NodePtr> &stmts() const;

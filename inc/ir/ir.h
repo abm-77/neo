@@ -245,6 +245,7 @@ public:
   void add_arg(Arg arg);
 
   std::vector<std::unique_ptr<BasicBlock>> &get_blocks();
+  BasicBlock *get_entry();
   BasicBlock *add_block(std::string_view name);
   BasicBlock *add_block(std::unique_ptr<BasicBlock> block);
   std::unique_ptr<BasicBlock> create_block(std::string_view name);

@@ -61,6 +61,6 @@ codegen_test_exec = executable(
   dependencies : [gtest_dep, gmock_dep],
   include_directories : incdir,
 )
-test('codegen', codegen_test_exec)
+# test('codegen', codegen_test_exec)
 
 

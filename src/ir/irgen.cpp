@@ -633,5 +633,7 @@ Value *IRGenerator::gen(Program &program, Ast::NodePtr ptr) {
   }
 }
 
+IRContext &IRGenerator::get_context() { return ctx; }
+
 } // namespace ir
 } // namespace neo

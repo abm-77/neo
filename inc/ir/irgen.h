@@ -38,6 +38,7 @@ public:
   IRGenerator(parse::Ast &ast);
   Program make_program();
   Value *gen(Program &program, parse::Ast::NodePtr node);
+  IRContext &get_context();
 
 public:
   void mem2reg(ir::Function &func);
