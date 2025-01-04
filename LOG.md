@@ -1,6 +1,15 @@
 LOG
 ====
 
+TODO:
+- eliminate variable alloca loads
+- eliminate variable alloca stores
+- promote allocas to registers
+
+12/28/24
+- [X] placed phi nodes
+- [X] determined phi node args 
+
 12/26/24
 - [X] calculate dominators
 - [X] calculate immediate dominators
