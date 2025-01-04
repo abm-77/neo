@@ -90,7 +90,7 @@ fn add(a: int, b: int) int {
 
 ## neoIR:
 `neoIR` is the intermediate representation used by `neo`. It is similar to, but much simpler than LLVM. It was actually designed 
-to be closer to [Bril](), developed at Cornell. The main design philosophy behind `neoIR` was to keep it very, very 
+to be closer to [Bril](https://capra.cs.cornell.edu/bril/intro.html), developed at Cornell. The main design philosophy behind `neoIR` was to keep it very, very 
 lean and only support features and operations used by `neo`. This is in contrast to LLVM which must support a wide variety of types,
 use cases, etc. The most prominent types in `neoIR` are `Value`s and `Instruction`s. `Value`s represent data within the 
 IR (e.g. constants, results, etc). They keep track of their defining `Instruction` and all of the users (a list of `Instructions`).
