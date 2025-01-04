@@ -5,9 +5,9 @@ I really wanted to get into compiler engineering and studied a bunch of literatu
 However, when I wanted to begin gaining experience working with compilers, I found it very hard
 to find open-source projects that were easy to hack on. There are a plethora of amazing and fully-featured
 compiler projects out there. The main issue I found was finding an easy way to contribute to them. Some have
-great documentation and communities, but it is still undeniably difficult to just jump into someone else's projects.
-And, as with most open-source projects, the "good first issue" tags are not very well maintained. All that being said, 
-I figured I'd just make my own compiler for my own language. While it won't be nearly as good or fully-featured as those
+great documentation and communities, but, as with most open-source projects, the "good first issue" tags are not very well maintained.
+
+All that being said, I figured I'd just make my own compiler for my own language. While it won't be nearly as good or fully-featured as those
 other compilers, it's essentially for me to a) get more experience, b) learn more about compilers, and c) have an artifact of
 my work.
 
@@ -88,6 +88,30 @@ fn add(a: int, b: int) int {
 }
 ```
 
+## neoIR:
+`neoIR` is the intermediate representation used by `neo`. It is similar to, but much simpler than LLVM. It was actually designed 
+to be closer to [Bril](), developed at Cornell. The main design philosophy behind `neoIR` was to keep it very, very 
+lean and only support features and operations used by `neo`. This is in contrast to LLVM which must support a wide variety of types,
+use cases, etc. The most prominent types in `neoIR` are `Value`s and `Instruction`s. `Value`s represent data within the 
+IR (e.g. constants, results, etc). They keep track of their defining `Instruction` and all of the users (a list of `Instructions`).
+All values in `neoIR` are typed. `Instruction`s represent operations that manipulate `Value`s. Unlike LLVM, `Instruction`s do not inherit from `Value`s, i.e. they cannot directly be used 
+interchangeably. Instead, `Instruction`s have an optional destination `Value` that would hold the result of the instruction executing.
+Similar to Bril, `Instruction`s also keep track of their opcode, any functions they may call, any labels they may reference, and any operands (`Value`s) they may use. 
+
+Beyond `Value`s and `Instruction`s, `neoIR` also has classes for `Types`, `Function`s, `BasicBlock`s, `Label`s, and `Program`s.
+The main relationship between the types is:
+- `Programs` are composed of `Function`s
+- `Function`s are composed of `BasicBlock`s
+- `BasicBlock`s branch to `Label`s
+
+The `neo` type system is implemented via the `neoIR` `Type` class. The main features of the type class center around creating named, sized, and aligned
+types that can be registered and reused on multiple `Value`s. To support pointer and array types, a `Type` can also have a `DerivedType` of `POINTER` or `ARRAY`.
+`neo`'s type system is very primitive and currently does not support type inference as seen in the examples (but this is something I'd like to implement).
+
+To aid in lowering `neo` programs into `neoIR`, there is the `IRBuilder` and `IRGenerator` classes. The `IRGenerator` takes in the AST produced from
+the `neo` frontend, and uses the `IRBuilder` to emit `neoIR` instructions. Post-generation, the `IRGenerator` returns to the user a `neoIR`
+`Program`. Between the generation function being invoked and the result being returned to the user, the `IRGenerator` will also run any optimizations
+requested by the user at invocation (WIP).
 
 ## Building and Testing neo
 Building `neo` requires [meson](https://mesonbuild.com/SimpleStart.html) and [clang](https://clang.llvm.org/). The `neo` project also depends on the
