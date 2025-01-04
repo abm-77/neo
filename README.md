@@ -127,7 +127,9 @@ The `neo` compiler is broken up into multiple conceptual "modules" that each han
 - `codegen`: module responsible for taking `neoIR` and lowering it into ARM64 assembly (WIP).
 
 The header files for each module are in the `inc` directory under their respective module subdirectory.
+
 The source files for each module are in the `src` directory under their respective module subdirectory.
+
 The test source files are also found within the `src` directory alongside their respective implementation files.
 
 ## Building and Testing neo
