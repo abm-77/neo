@@ -113,12 +113,30 @@ the `neo` frontend, and uses the `IRBuilder` to emit `neoIR` instructions. Post-
 `Program`. Between the generation function being invoked and the result being returned to the user, the `IRGenerator` will also run any optimizations
 requested by the user at invocation (WIP).
 
+## neo Compiler Code Structure
+The `neo` compiler is broken up into multiple conceptual "modules" that each handle a different part of the compilation process. 
+
+### Frontend Modules
+- `lex`: module responsible for taking `neo` source files and converting them into tokens.
+- `parse`: module responsible for taking collection of tokens and parsing them into an AST.
+
+### neoIR Modules
+- `ir`: module responsible for taking `neo` AST and lowering it into `neoIR`.
+
+### Codegen Modules
+- `codegen`: module responsible for taking `neoIR` and lowering it into ARM64 assembly (WIP).
+
+The header files for each module are in the `inc` directory under their respective module subdirectory.
+The source files for each module are in the `src` directory under their respective module subdirectory.
+The test source files are also found within the `src` directory alongside their respective implementation files.
+
 ## Building and Testing neo
-Building `neo` requires [meson](https://mesonbuild.com/SimpleStart.html) and [clang](https://clang.llvm.org/). The `neo` project also depends on the
+Building `neo` requires [meson](https://mesonbuild.com/SimpleStart.html) and [clang](https://clang.llvm.org/) (I'm using clang-18). The `neo` project also depends on the
 [GoogleTest](https://google.github.io/googletest/) library for unit testing (this will be brought in by meson during build).
 Once you have the required dependencies, you can run the following commands:
 ```
 # compile project
+CC=clang CXX=clang++ meson setup bld
 cd bld/
 meson compile # executable can be found at bld/neo
 
@@ -130,3 +148,7 @@ meson compile # executable can be found at bld/neo
 cd bld/
 meson test # test output can be found in bld/meson-logs/testlog.json
 ```
+## neo Name
+I chose the name `neo` based on its prefix meaning "new" or "recent". More specifically, its use in the 
+word "neophyte" which is a "beginner" or "novice". Since I am a novice at compiler development, I thought 
+the naming was clever. Even more meta, because the stem "phyto-" concerns plants, the `neo` logo is the :seedling: (seedling) emoji.
