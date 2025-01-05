@@ -18,8 +18,8 @@ Ast parse_input(std::string_view input) {
 TEST(IR, IrTest) {
   auto ast = parse_input(
       "fn add(a: int, b: int) int {"
-      "if (1 < 2) { a += 1; } else if (2 < 3) { a += 2; } else { a += 3; }"
-      " return b + 2;"
+      "if (1 < 2) { a += 1; } else if (2 < 3) { a = 2; } else { a = b; }"
+      " return a + b;"
       "}");
   IRGenerator generator(ast);
   auto program = generator.make_program();
@@ -52,7 +52,9 @@ TEST(IR, IrTest) {
   std::cout << std::endl;
 
   for (auto &[_, func] : funcs) {
+    func.debug_print();
     add_phi_nodes(generator.get_context(), func);
+    func.debug_print();
   }
 }
 } // namespace ir

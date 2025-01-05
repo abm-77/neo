@@ -2,9 +2,14 @@ LOG
 ====
 
 TODO:
-- eliminate variable alloca loads
-- eliminate variable alloca stores
-- promote allocas to registers
+- [] remove alloca instrs
+- [] differentiate between variable, array, and pointer allocas
+- [] think about handling load before store
+
+1/04/25:
+- [X] eliminate variable alloca loads
+- [X] eliminate variable alloca stores
+- [X] insert phi nodes with args
 
 12/28/24
 - [X] placed phi nodes
@@ -28,7 +33,6 @@ TODO:
 - [X] extended type registry with hashable types
 - [X] fixed some errors with if-chain irgen
 - [X] starting to name some of the values other than just random tmps
-
 
 12/23/24
 - [X] for stmt irgen 
