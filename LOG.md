@@ -5,6 +5,11 @@ TODO:
 - [] remove alloca instrs
 - [] differentiate between variable, array, and pointer allocas
 - [] think about handling load before store
+- [] Add irgen tests
+- [] Add iropt tests
+
+1/15/25:
+- [X] add basic ir tests.
 
 1/04/25:
 - [X] eliminate variable alloca loads

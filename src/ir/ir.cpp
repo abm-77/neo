@@ -221,8 +221,10 @@ Type *Instruction::get_type() const { return type; }
 
 void Instruction::replace_operand(Value *oldv, Value *newv) {
   for (Value *&operand : operands) {
-    if (operand == oldv)
+    if (operand == oldv) {
       operand = newv;
+      newv->add_user(this);
+    }
   }
 }
 
@@ -363,7 +365,10 @@ void Function::remove_dead_instrs() {
 }
 
 // Program
-Program::Program(IRContext &ctx, std::string_view name) : name(name) {}
+Program::Program(IRContext &ctx, std::string_view name) : name(name) {
+  // global scope
+  push_scope();
+}
 
 std::unordered_map<std::string_view, Function> &Program::get_functions() {
   return functions;

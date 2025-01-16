@@ -1,5 +1,7 @@
 project('neo', 'cpp', default_options : ['cpp_std=c++20'],)
 
+add_project_arguments(['-gdwarf-4'], language: 'cpp')
+
 gtest_proj = subproject('gtest')
 gtest_dep = gtest_proj.get_variable('gtest_main_dep')
 gmock_dep = gtest_proj.get_variable('gmock_dep')
@@ -43,6 +45,7 @@ test('frontend', frontend_test_exec)
 
 ir_test_src = files(
   'src/ir/ir_test.cpp',
+  'src/ir/irgen_test.cpp',
 )
 ir_test_exec = executable(
   'ir',
