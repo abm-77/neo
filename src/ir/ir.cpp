@@ -121,6 +121,20 @@ void Value::replace_all_uses_with(Value *value) {
 
 b32 Value::alive() { return !dead; }
 
+void Value::debug_print() const {
+  if (is_const_value()) {
+    if (auto *v = std::get_if<i32>(&constant_value.value())) {
+      std::cout << *v;
+    } else if (auto *v = std::get_if<b32>(&constant_value.value())) {
+      std::cout << *v;
+    } else if (auto *v = std::get_if<f32>(&constant_value.value())) {
+      std::cout << *v;
+    }
+  } else {
+    std::cout << name;
+  }
+}
+
 // Instruction
 const char *op2str(InstructionOp op) {
   switch (op) {
@@ -207,7 +221,11 @@ void Instruction::add_label(Label label) { labels.push_back(label); }
 
 void Instruction::add_operand(Value *operand) { operands.push_back(operand); }
 
-Value *Instruction::get_dest() const { return operands[0]; }
+void Instruction::set_dest(Value *new_dest) { dest = new_dest; }
+
+Value *Instruction::get_dest() const { return dest; }
+
+bool Instruction::has_dest() const { return dest != nullptr; }
 
 std::vector<Instruction *> Instruction::get_users() { return users; }
 
@@ -232,14 +250,41 @@ b32 Instruction::alive() { return !dead; }
 
 void Instruction::kill() { dead = true; }
 
+b32 Instruction::has_const_operands() const {
+  for (auto op : operands) {
+    if (!op->is_const_value())
+      return false;
+  }
+  return true;
+}
+
+b32 Instruction::op_is_arithmetic() const {
+  return op == OP_ADD || op == OP_SUB || op == OP_MUL || op == OP_DIV ||
+         op == OP_NEG;
+}
+
+b32 Instruction::op_is_comparison() const {
+  return op == OP_CEQ || op == OP_CNE || op == OP_CLT || op == OP_CGT ||
+         op == OP_CLE || op == OP_CGE;
+}
+
+b32 Instruction::op_is_logical() const {
+  return op == OP_NOT || op == OP_AND || op == OP_OR;
+}
+
 void Instruction::debug_print() const {
   std::cout << op2str(op) << " ";
+
+  if (dest)
+    std::cout << dest->get_name() << ", ";
 
   if (function)
     std::cout << function->get_name() << ", ";
 
-  for (auto &operand : operands)
-    std::cout << operand->get_name() << ", ";
+  for (auto &operand : operands) {
+    operand->debug_print();
+    std::cout << ", ";
+  }
 
   for (auto &label : labels) {
     label.debug_print();
@@ -311,10 +356,33 @@ void BasicBlock::remove_dead_instrs() {
   }
 }
 
+BasicBlock::UseDefInfo BasicBlock::get_uses_and_defs() {
+  UseDefInfo info;
+
+  // operands that are used but not yetdefined in ths block
+  // go to uses
+  for (auto &instr : instrs) {
+    for (auto op : instr->get_operands()) {
+      if (!info.defs.contains(op))
+        info.uses.insert(op);
+    }
+  }
+
+  // results of instructions are definitions of new values
+  for (auto &instr : instrs) {
+    if (instr->has_dest()) {
+      info.defs.insert(instr->get_dest());
+    }
+  }
+
+  return info;
+}
+
 // Function
 Function::Function() {}
 
-Function::Function(std::string_view name) : name(name) {}
+Function::Function(std::string_view name, Type *ret_type)
+    : name(name), ret_type(ret_type) {}
 
 const std::string_view &Function::get_name() const { return name; }
 
@@ -380,8 +448,8 @@ Function *Program::get_function(std::string_view name) {
   return nullptr;
 }
 
-Function *Program::new_function(std::string_view name) {
-  functions[name] = Function(name);
+Function *Program::new_function(std::string_view name, Type *ret_type) {
+  functions[name] = Function(name, ret_type);
   return &functions[name];
 }
 

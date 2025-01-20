@@ -2,8 +2,7 @@
 #include <cassert>
 #include <frontend/lexer.h>
 #include <ir/ir.h>
-#include <ir/irgen.h>
-#include <memory>
+#include <ir/ir_gen.h>
 
 namespace neo {
 namespace ir {
@@ -15,8 +14,10 @@ using namespace parse;
 IRBuilder::IRBuilder(IRContext &ctx) : ctx(ctx) {}
 
 Instruction *IRBuilder::push_unop(InstructionOp op, Value *dest, Value *value) {
+  assert(op == OP_NEG || op == OP_NOT);
+
   Instruction *un_instr = cursor->push_instr(op, dest->get_type());
-  un_instr->add_operand(dest);
+  un_instr->set_dest(dest);
   un_instr->add_operand(value);
 
   dest->set_def_instr(un_instr);
@@ -28,7 +29,7 @@ Instruction *IRBuilder::push_unop(InstructionOp op, Value *dest, Value *value) {
 Instruction *IRBuilder::push_binop(InstructionOp op, Value *dest, Value *lhs,
                                    Value *rhs) {
   Instruction *bin_instr = cursor->push_instr(op, dest->get_type());
-  bin_instr->add_operand(dest);
+  bin_instr->set_dest(dest);
   bin_instr->add_operand(lhs);
   bin_instr->add_operand(rhs);
 
@@ -45,7 +46,7 @@ void IRBuilder::set_cursor(BasicBlock *bb) { cursor = bb; }
 
 Instruction *IRBuilder::push_jmp(BasicBlock *bb) {
   Instruction *jmp_instr =
-      cursor->push_instr(OP_BR, ctx.get_type(Type("void", 0, 0)));
+      cursor->push_instr(OP_JMP, ctx.get_type(Type("void", 0, 0)));
 
   jmp_instr->add_label(bb->label());
 
@@ -75,10 +76,13 @@ Instruction *IRBuilder::push_br(Value *cond, BasicBlock *T, BasicBlock *F) {
 
 Instruction *IRBuilder::push_call(Value *dest, Function *callee,
                                   const std::vector<Value *> &args) {
-  assert(callee->get_return_type() == dest->get_type());
+  auto void_type = ctx.get_type(Type("void", 0, 0));
+  assert((dest && callee->get_return_type() == dest->get_type()) ||
+         (!dest && callee->get_return_type() == void_type));
 
-  Instruction *call_instr = cursor->push_instr(OP_CALL, dest->get_type());
-  call_instr->add_operand(dest);
+  Instruction *call_instr =
+      cursor->push_instr(OP_CALL, (dest) ? dest->get_type() : void_type);
+  call_instr->set_dest(dest);
   call_instr->set_function(callee);
 
   auto callee_args = callee->get_args();
@@ -88,21 +92,17 @@ Instruction *IRBuilder::push_call(Value *dest, Function *callee,
     args[i]->add_user(call_instr);
   }
 
-  dest->set_def_instr(call_instr);
+  if (dest)
+    dest->set_def_instr(call_instr);
 
   return call_instr;
 }
 
-Instruction *IRBuilder::push_ret(Value *dest, Value *value) {
-  assert(dest->get_type() == value->get_type());
-
-  Instruction *ret_instr = cursor->push_instr(OP_RET, dest->get_type());
-  ret_instr->add_operand(dest);
+Instruction *IRBuilder::push_ret(Value *value) {
+  Instruction *ret_instr =
+      cursor->push_instr(OP_RET, ctx.get_type(Type("void", 0, 0)));
   ret_instr->add_operand(value);
-
-  dest->set_def_instr(ret_instr);
   value->add_user(ret_instr);
-
   return ret_instr;
 }
 
@@ -115,7 +115,7 @@ Instruction *IRBuilder::push_alloca(Value *dest, Type *type, i32 count) {
          "destination base type must match allocated type");
 
   Instruction *alloca_instr = cursor->push_instr(OP_ALLOCA, dest->get_type());
-  alloca_instr->add_operand(dest);
+  alloca_instr->set_dest(dest);
 
   auto count_val = ctx.new_value("count", count);
   alloca_instr->add_operand(count_val);
@@ -139,7 +139,6 @@ Instruction *IRBuilder::push_str(Value *dest, Value *value, Value *offset) {
   if (offset)
     str_instr->add_operand(offset);
 
-  dest->set_def_instr(str_instr);
   value->add_user(str_instr);
   if (offset)
     offset->add_user(str_instr);
@@ -169,7 +168,7 @@ Instruction *IRBuilder::push_ld(Value *dest, Value *src, Value *offset) {
       "destination type must match value base type");
 
   Instruction *ld_instr = cursor->push_instr(OP_LD, dest->get_type());
-  ld_instr->add_operand(dest);
+  ld_instr->set_dest(dest);
   ld_instr->add_operand(src);
   if (offset)
     ld_instr->add_operand(offset);
@@ -392,9 +391,8 @@ Value *IRGenerator::gen(Program &program, Ast::NodePtr ptr) {
 
   case Ast::AST_RET_STMT: {
     auto value = gen(program, node.lhs);
-    auto result = ctx.new_value("rettmp", value->get_type());
-    builder.push_ret(result, value);
-    return result;
+    builder.push_ret(value);
+    return nullptr;
   } break;
 
   case Ast::AST_VAR_DEF_STMT: {
@@ -414,10 +412,11 @@ Value *IRGenerator::gen(Program &program, Ast::NodePtr ptr) {
   case Ast::AST_FN_DEF_STMT: {
     auto fn_data = ast.get<Ast::FuncDefData>(node);
     auto fn_name = ast.get<Ast::StringData>(ast.at(node.lhs));
+    auto ret_type = ctx.convert_ast_type_to_ir_type(ast, fn_data.ret_type);
 
     auto F = program.get_function(fn_name);
     if (!F)
-      F = program.new_function(fn_name);
+      F = program.new_function(fn_name, ret_type);
 
     // function already defined
     if (!F->empty())
@@ -430,9 +429,6 @@ Value *IRGenerator::gen(Program &program, Ast::NodePtr ptr) {
       auto arg_type = ctx.convert_ast_type_to_ir_type(ast, param.type);
       F->add_arg(Function::Arg{.type = arg_type, .name = arg_name});
     }
-
-    auto ret_type = ctx.convert_ast_type_to_ir_type(ast, fn_data.ret_type);
-    F->set_return_type(ret_type);
 
     if (fn_data.blk != Ast::NULL_NODE) {
       auto entry_bb = F->add_block("entry");

@@ -22,7 +22,7 @@ public:
   Instruction *push_br(Value *cond, BasicBlock *T, BasicBlock *F);
   Instruction *push_call(Value *dest, Function *callee,
                          const std::vector<Value *> &args);
-  Instruction *push_ret(Value *dest, Value *value);
+  Instruction *push_ret(Value *value);
 
   Instruction *push_alloca(Value *dest, Type *type, i32 count = 1);
   Instruction *push_str(Value *dest, Value *value, Value *offset = nullptr);

@@ -7,6 +7,7 @@
 #include <optional>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <variant>
 #include <vector>
 
@@ -156,11 +157,15 @@ public:
 
   InstructionOp get_op() const;
   void set_op(InstructionOp new_op);
+  b32 op_is_arithmetic() const;
+  b32 op_is_comparison() const;
+  b32 op_is_logical() const;
 
   std::vector<Value *> &get_operands();
   Value *get_operand(u32 idx);
   void add_operand(Value *operand);
   void replace_operand(Value *oldv, Value *newv);
+  b32 has_const_operands() const;
 
   Function *get_function() const;
   void set_function(Function *function);
@@ -170,7 +175,9 @@ public:
   const std::vector<Label> &get_labels() const;
   void add_label(Label label);
 
+  void set_dest(Value *new_dest);
   Value *get_dest() const;
+  bool has_dest() const;
 
   std::vector<Instruction *> get_users();
   void add_user(Instruction *user);
@@ -186,6 +193,7 @@ private:
   InstructionOp op;
   Type *type;
 
+  Value *dest;
   Function *function;
   std::vector<Label> labels;
   std::vector<Value *> operands;
@@ -197,6 +205,12 @@ private:
 };
 
 class BasicBlock {
+private:
+  struct UseDefInfo {
+    std::unordered_set<Value *> uses;
+    std::unordered_set<Value *> defs;
+  };
+
 public:
   BasicBlock(Function *parent, u32 number, std::string_view name = "");
 
@@ -221,6 +235,8 @@ public:
 
   void remove_dead_instrs();
 
+  UseDefInfo get_uses_and_defs();
+
 private:
   Function *parent;
   std::string_view name;
@@ -238,7 +254,7 @@ public:
   };
 
   Function();
-  Function(std::string_view name);
+  Function(std::string_view name, Type *ret_type);
 
   const std::string_view &get_name() const;
   const std::vector<Arg> &get_args();
@@ -260,8 +276,8 @@ public:
   void debug_print() const;
 
 private:
-  Type *ret_type;
   std::string_view name;
+  Type *ret_type;
   std::vector<Arg> args;
   std::unordered_map<std::string_view, u32> block_numbers;
   std::vector<std::unique_ptr<BasicBlock>> basic_blocks;
@@ -277,7 +293,7 @@ public:
   Value *lookup_symbol(std::string_view var);
   const std::unordered_map<std::string_view, Value *> &get_symbol_table();
 
-  Function *new_function(std::string_view name);
+  Function *new_function(std::string_view name, Type *ret_type);
   Function *get_function(std::string_view name);
   std::unordered_map<std::string_view, Function> &get_functions();
 

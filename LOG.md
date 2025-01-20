@@ -2,11 +2,21 @@ LOG
 ====
 
 TODO:
-- [] remove alloca instrs
 - [] differentiate between variable, array, and pointer allocas
 - [] think about handling load before store
-- [] Add irgen tests
-- [] Add iropt tests
+- [] add ir_opt tests
+- [] add ir_anal tests
+- [] add codegen_tests
+
+1/19/25:
+- [X] add ir_gen tests
+- [X] remove alloca instrs
+- [X] add constant folding
+- [X] break out ir analysis code into its own submodule
+- [X] differentiate between instructions destination and other operands
+- [X] perform liveness analysis
+- [X] construct interference graph 
+- [X] simplify interference graph 
 
 1/15/25:
 - [X] add basic ir tests.

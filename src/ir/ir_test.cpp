@@ -1,6 +1,6 @@
 #include "ir/ir.h"
-#include <ir/irgen.h>
-#include <ir/iropt.h>
+#include <ir/ir_gen.h>
+#include <ir/ir_opt.h>
 
 #include <gtest/gtest.h>
 #include <string_view>

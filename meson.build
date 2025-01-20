@@ -17,8 +17,9 @@ frontend_src = files(
 
 ir_src = files(
   'src/ir/ir.cpp',
-  'src/ir/irgen.cpp',
-  'src/ir/iropt.cpp',
+  'src/ir/ir_gen.cpp',
+  'src/ir/ir_opt.cpp',
+  'src/ir/ir_anal.cpp',
 )
 
 codegen_src = files(
@@ -45,7 +46,7 @@ test('frontend', frontend_test_exec)
 
 ir_test_src = files(
   'src/ir/ir_test.cpp',
-  'src/ir/irgen_test.cpp',
+  'src/ir/ir_gen_test.cpp',
 )
 ir_test_exec = executable(
   'ir',

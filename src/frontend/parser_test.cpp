@@ -147,7 +147,6 @@ TEST(Parser, ParseVarAssign) {
   EXPECT_EQ(expr_stmt.type, Ast::AST_EXPR_STMT);
 
   auto infix_expr = ast.at(expr_stmt.lhs);
-  std::cout << node_type_to_string(infix_expr.type) << std::endl;
   EXPECT_EQ(infix_expr.type, Ast::AST_INFIX_EXPR);
   EXPECT_EQ(ast.get<Ast::StringData>(ast.at(infix_expr.lhs)), "a");
 

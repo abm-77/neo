@@ -1,6 +1,7 @@
+#include <common/types.h>
 #include <iostream>
 #include <ir/ir.h>
-#include <ir/iropt.h>
+#include <ir/ir_opt.h>
 
 namespace std {
 template <> struct hash<neo::ir::Edge> {
@@ -48,7 +49,17 @@ void graph_insert_edge(Graph &g, BasicBlock *key, BasicBlock *val) {
       .first->second.insert(val);
 }
 
-Graph dominators(Function &function) {
+IROptimizer::IROptimizer(IRContext &ctx, Program &program)
+    : ctx(ctx), program(program) {}
+
+void IROptimizer::optimize() {
+  for (auto &[_, func] : program.get_functions()) {
+    do_alloca_promotion_pass(ctx, func);
+    do_costant_folding_pass(ctx, func);
+  }
+}
+
+Graph IROptimizer::get_dominators(Function &function) {
   Graph dominators;
   auto &blocks = function.get_blocks();
 
@@ -80,17 +91,18 @@ Graph dominators(Function &function) {
   return dominators;
 }
 
-Graph dominator_tree(const Graph &dominators) {
+Graph IROptimizer::get_dominator_tree(const Graph &dominators) {
   Graph dt;
   for (auto &[bb, doms] : dominators) {
-    auto idom = immediate_dominator(dominators, bb);
+    auto idom = get_immediate_dominator(dominators, bb);
     if (idom)
       graph_insert_edge(dt, idom, bb);
   }
   return dt;
 }
 
-BasicBlock *immediate_dominator(const Graph &dominators, BasicBlock *bb) {
+BasicBlock *IROptimizer::get_immediate_dominator(const Graph &dominators,
+                                                 BasicBlock *bb) {
   auto &doms = dominators.at(bb);
   if (doms.size() == 1)
     return nullptr;
@@ -111,8 +123,8 @@ BasicBlock *immediate_dominator(const Graph &dominators, BasicBlock *bb) {
   return idom;
 }
 
-Graph dominance_frontiers(std::vector<std::unique_ptr<BasicBlock>> &blocks,
-                          const Graph &doms) {
+Graph IROptimizer::get_dominance_frontiers(
+    std::vector<std::unique_ptr<BasicBlock>> &blocks, const Graph &doms) {
   Graph dom_front;
   for (auto &block : blocks) {
     auto &preds = block->get_preds();
@@ -121,9 +133,9 @@ Graph dominance_frontiers(std::vector<std::unique_ptr<BasicBlock>> &blocks,
     for (auto pred : preds) {
       BasicBlock *run_dom;
       BasicBlock *runner = pred;
-      while (runner != immediate_dominator(doms, block.get())) {
+      while (runner != get_immediate_dominator(doms, block.get())) {
         graph_insert_edge(dom_front, runner, block.get());
-        run_dom = immediate_dominator(doms, runner);
+        run_dom = get_immediate_dominator(doms, runner);
         runner = run_dom;
       }
     }
@@ -131,7 +143,7 @@ Graph dominance_frontiers(std::vector<std::unique_ptr<BasicBlock>> &blocks,
   return dom_front;
 }
 
-std::vector<Value *> find_alloca_variables(Function &function) {
+std::vector<Value *> IROptimizer::find_alloca_variables(Function &function) {
   std::vector<Value *> vars;
   for (auto &bb : function.get_blocks()) {
     for (auto &instr : bb->get_instructions()) {
@@ -146,7 +158,7 @@ std::vector<Value *> find_alloca_variables(Function &function) {
 // TODO differentiate between stores to variables and stores to arrays/pointers
 std::unordered_map<Value *,
                    std::pair<std::unordered_set<BasicBlock *>, Value *>>
-find_stores(Function &function) {
+IROptimizer::find_stores(Function &function) {
   std::unordered_map<Value *,
                      std::pair<std::unordered_set<BasicBlock *>, Value *>>
       stores;
@@ -163,17 +175,17 @@ find_stores(Function &function) {
 
       // record initial store value
       if (!stores[instr->get_dest()].second)
-        stores[instr->get_dest()].second = instr->get_operand(1);
+        stores[instr->get_dest()].second = instr->get_operand(0);
     }
   }
   return stores;
 }
 
-void add_phi_nodes(IRContext &ctx, Function &function) {
-  auto doms = dominators(function);
+void IROptimizer::do_alloca_promotion_pass(IRContext &ctx, Function &function) {
+  auto doms = get_dominators(function);
   auto store_locs = find_stores(function);
-  auto dom_fronts = dominance_frontiers(function.get_blocks(), doms);
-  auto dom_tree = dominator_tree(doms);
+  auto dom_fronts = get_dominance_frontiers(function.get_blocks(), doms);
+  auto dom_tree = get_dominator_tree(doms);
 
   std::unordered_map<Value *, std::vector<Value *>> val_stack;
   std::unordered_map<Edge, Value *> phi_dests;
@@ -213,6 +225,8 @@ void add_phi_nodes(IRContext &ctx, Function &function) {
     // generate new values to store the results of each phi node
     for (auto phi_val : phi_locs[bb]) {
       auto phi_dest = ctx.new_value("phitemp", phi_val->get_type());
+      val_stack.try_emplace(phi_val, std::vector<Value *>())
+          .first->second.push_back(phi_dest);
       phi_dests[Edge{.incoming_block = bb, .incoming_value = phi_val}] =
           phi_dest;
     }
@@ -221,17 +235,18 @@ void add_phi_nodes(IRContext &ctx, Function &function) {
       // get the value being stored to this variable and push it onto the stack
       // then eliminate store.
       if (instr->get_op() == OP_STR) {
-        auto store_var = instr->get_dest();
+        auto store_var = instr->get_operand(0);
         auto store_val = instr->get_operand(1);
         val_stack.try_emplace(store_var, std::vector<Value *>())
             .first->second.push_back(store_val);
+        store_var->get_def_instr()->kill();
         instr->kill();
       }
       // replace all uses of the value being loaded into with the most recent
       // value stored to the variable being loaded from then eliminate load
       else if (instr->get_op() == OP_LD) {
         auto load_val = instr->get_dest();
-        auto load_var = instr->get_operand(1);
+        auto load_var = instr->get_operand(0);
         load_val->replace_all_uses_with(val_stack[load_var].back());
         instr->kill();
       }
@@ -301,6 +316,91 @@ void add_phi_nodes(IRContext &ctx, Function &function) {
     }
   }
   function.remove_dead_instrs();
+}
+
+// TODO: Make constant folding pass agnostic of expression chain order.
+// Currently, if an expression is folded into a non-const instruction, e.g.,
+// a infix expression, this pass will not be able to optimize it unless the
+// expression is rearranged such that the non-const operands are folded into a
+// const operand.
+void IROptimizer::do_costant_folding_pass(IRContext &ctx, Function &function) {
+  b32 constant_folded = false;
+  do {
+    for (auto &block : function.get_blocks()) {
+      for (auto &instr : block->get_instructions()) {
+        if (instr->has_const_operands()) {
+          Value *folded_value = nullptr;
+          auto lhs = instr->get_operand(0)->get_const_value();
+          Value::ConstantValue rhs = -1;
+          if (instr->get_operands().size() > 1)
+            rhs = instr->get_operand(1)->get_const_value();
+
+          switch (instr->get_op()) {
+          case OP_ADD: {
+            folded_value = ctx.new_value("addfold", std::get<i32>(lhs) +
+                                                        std::get<i32>(rhs));
+          } break;
+          case OP_SUB: {
+            folded_value = ctx.new_value("subfold", std::get<i32>(lhs) -
+                                                        std::get<i32>(rhs));
+          } break;
+          case OP_MUL: {
+            folded_value = ctx.new_value("mulfold", std::get<i32>(lhs) *
+                                                        std::get<i32>(rhs));
+          } break;
+          case OP_DIV: {
+            // TODO: Handle divide by zero
+            folded_value = ctx.new_value("mulfold", std::get<i32>(lhs) /
+                                                        std::get<i32>(rhs));
+          } break;
+          case OP_NEG: {
+            folded_value = ctx.new_value("negfold", -std::get<i32>(lhs));
+          } break;
+          case OP_AND: {
+            folded_value = ctx.new_value("andfold", std::get<b32>(lhs) &&
+                                                        std::get<b32>(rhs));
+          } break;
+          case OP_OR: {
+            folded_value = ctx.new_value("orfold", std::get<b32>(lhs) ||
+                                                       std::get<b32>(rhs));
+          } break;
+          case OP_NOT: {
+            folded_value = ctx.new_value("orfold", !std::get<b32>(lhs));
+          } break;
+          case OP_CEQ: {
+            folded_value = ctx.new_value("ceqfold", lhs == rhs);
+          } break;
+          case OP_CNE: {
+            folded_value = ctx.new_value("cnefold", lhs != rhs);
+          } break;
+          case OP_CLT: {
+            folded_value = ctx.new_value("cltfold", std::get<i32>(lhs) <
+                                                        std::get<i32>(rhs));
+          } break;
+          case OP_CGT: {
+            folded_value = ctx.new_value("cgtfold", std::get<i32>(lhs) >
+                                                        std::get<i32>(rhs));
+          } break;
+          case OP_CLE: {
+            folded_value = ctx.new_value("clefold", std::get<i32>(lhs) <=
+                                                        std::get<i32>(rhs));
+          } break;
+          case OP_CGE: {
+            folded_value = ctx.new_value("cgefold", std::get<i32>(lhs) >=
+                                                        std::get<i32>(rhs));
+          } break;
+          default: {
+            assert(false && "unreachable");
+          } break;
+          }
+
+          instr->get_dest()->replace_all_uses_with(folded_value);
+          instr->kill();
+        }
+      }
+    }
+    function.remove_dead_instrs();
+  } while (constant_folded);
 }
 
 } // namespace ir
