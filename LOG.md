@@ -7,6 +7,15 @@ TODO:
 - [] add ir_opt tests
 - [] add ir_anal tests
 - [] add codegen_tests
+- [] assemble argument registers
+- [] enforce calling convention
+
+1/23/25:
+- [X] assemble branches
+- [X] assemble jumps
+- [X] assemble arithmetic ops
+- [X] assemble comparison ops
+- [X] assemble loads and stores (to stack locations)
 
 1/19/25:
 - [X] add ir_gen tests

@@ -70,3 +70,9 @@ private:
   T *data_;
   u32 size_;
 };
+
+#define default_insert(mapping, key, val, default_val)                         \
+  mapping.try_emplace(key, default_val).first->second.insert(val)
+
+#define default_push_back(mapping, key, val, default_val)                      \
+  mapping.try_emplace(key, default_val).first->second.push_back(val)

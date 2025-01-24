@@ -44,11 +44,6 @@ void graph_print(const Graph &g) {
   }
 }
 
-void graph_insert_edge(Graph &g, BasicBlock *key, BasicBlock *val) {
-  g.try_emplace(key, std::unordered_set<BasicBlock *>())
-      .first->second.insert(val);
-}
-
 IROptimizer::IROptimizer(IRContext &ctx, Program &program)
     : ctx(ctx), program(program) {}
 
@@ -96,7 +91,7 @@ Graph IROptimizer::get_dominator_tree(const Graph &dominators) {
   for (auto &[bb, doms] : dominators) {
     auto idom = get_immediate_dominator(dominators, bb);
     if (idom)
-      graph_insert_edge(dt, idom, bb);
+      default_insert(dt, idom, bb, std::unordered_set<BasicBlock *>());
   }
   return dt;
 }
@@ -134,25 +129,14 @@ Graph IROptimizer::get_dominance_frontiers(
       BasicBlock *run_dom;
       BasicBlock *runner = pred;
       while (runner != get_immediate_dominator(doms, block.get())) {
-        graph_insert_edge(dom_front, runner, block.get());
+        default_insert(dom_front, runner, block.get(),
+                       std::unordered_set<BasicBlock *>());
         run_dom = get_immediate_dominator(doms, runner);
         runner = run_dom;
       }
     }
   }
   return dom_front;
-}
-
-std::vector<Value *> IROptimizer::find_alloca_variables(Function &function) {
-  std::vector<Value *> vars;
-  for (auto &bb : function.get_blocks()) {
-    for (auto &instr : bb->get_instructions()) {
-      if (instr->get_op() == OP_ALLOCA) {
-        vars.push_back(instr->get_dest());
-      }
-    }
-  }
-  return vars;
 }
 
 // TODO differentiate between stores to variables and stores to arrays/pointers
@@ -197,17 +181,14 @@ void IROptimizer::do_alloca_promotion_pass(IRContext &ctx, Function &function) {
     auto &[store_blocks, initial_store] = stores;
     // TODO: handle loads before intial stores(?)
     // set the intial value of the variable
-    val_stack.try_emplace(var, std::vector<Value *>())
-        .first->second.push_back(initial_store);
+    default_push_back(val_stack, var, initial_store, std::vector<Value *>());
 
     auto worklist = std::vector(store_blocks.begin(), store_blocks.end());
     while (!worklist.empty()) {
       auto block = worklist.back();
       worklist.pop_back();
       for (auto df : dom_fronts[block]) {
-        phi_locs.try_emplace(df, std::unordered_set<Value *>())
-            .first->second.insert(var);
-
+        default_insert(phi_locs, df, var, std::unordered_set<Value *>());
         if (!store_blocks.contains(df)) {
           worklist.push_back(df);
         }
@@ -225,8 +206,7 @@ void IROptimizer::do_alloca_promotion_pass(IRContext &ctx, Function &function) {
     // generate new values to store the results of each phi node
     for (auto phi_val : phi_locs[bb]) {
       auto phi_dest = ctx.new_value("phitemp", phi_val->get_type());
-      val_stack.try_emplace(phi_val, std::vector<Value *>())
-          .first->second.push_back(phi_dest);
+      default_push_back(val_stack, phi_val, phi_dest, std::vector<Value *>());
       phi_dests[Edge{.incoming_block = bb, .incoming_value = phi_val}] =
           phi_dest;
     }
@@ -257,8 +237,9 @@ void IROptimizer::do_alloca_promotion_pass(IRContext &ctx, Function &function) {
       // for variable (back of stack)
       for (auto phi_val : phi_locs[succ]) {
         auto e = Edge{.incoming_block = succ, .incoming_value = phi_val};
-        phi_args.try_emplace(e, std::vector<std::pair<Label, Value *>>())
-            .first->second.push_back({bb->label(), val_stack[phi_val].back()});
+        std::pair<Label, Value *> v = {bb->label(), val_stack[phi_val].back()};
+        auto def = std::vector<std::pair<Label, Value *>>();
+        default_push_back(phi_args, e, v, def);
       }
     }
 

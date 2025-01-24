@@ -1,4 +1,4 @@
-#include "ir/ir.h"
+#include <ir/ir.h>
 #include <ir/ir_gen.h>
 #include <ir/ir_opt.h>
 

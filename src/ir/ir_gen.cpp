@@ -101,8 +101,10 @@ Instruction *IRBuilder::push_call(Value *dest, Function *callee,
 Instruction *IRBuilder::push_ret(Value *value) {
   Instruction *ret_instr =
       cursor->push_instr(OP_RET, ctx.get_type(Type("void", 0, 0)));
-  ret_instr->add_operand(value);
-  value->add_user(ret_instr);
+  if (value) {
+    ret_instr->add_operand(value);
+    value->add_user(ret_instr);
+  }
   return ret_instr;
 }
 
