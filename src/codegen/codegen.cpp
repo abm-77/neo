@@ -1,6 +1,7 @@
 #include "common/types.h"
 #include <codegen/codegen.h>
 #include <cstring>
+#include <fstream>
 #include <iostream>
 #include <ir/ir.h>
 #include <ir/ir_anal.h>
@@ -9,16 +10,31 @@
 #define write_text(msg) outfile << msg
 #define write_line(msg) outfile << msg << std::endl
 #define reg(val) "x" << val2reg[val]
-#define branch_dest(label)                                                     \
-  label.fn_name << "_" << label.name << "_" << label.number
-#define block_label(label)                                                     \
-  label.fn_name << "_" << label.name << "_" << label.number << ":"
+
+#define branch_dest(block)                                                     \
+  block->label().fn_name << "_" << block->label().name << "_"                  \
+                         << block->label().number
+#define block_label(block)                                                     \
+  block->label().fn_name << "_" << block->label().name << "_"                  \
+                         << block->label().number << ":"
 #define newline() outfile << std::endl
 
 namespace neo {
 namespace codegen {
 
 using namespace ir;
+
+void write_value(std::ofstream &out, std::unordered_map<Value *, i32> &val2reg,
+                 Value *val) {
+  if (val2reg.contains(val)) {
+    out << "x" << val2reg[val];
+  } else {
+    auto opt = val->get_const_value();
+    if (auto v = std::get_if<i32>(&opt)) {
+      out << "#" << *v;
+    }
+  }
+}
 
 static inline u32 pow_round16(uint32_t n) {
   if (n == 0)
@@ -90,25 +106,30 @@ CodeGenerator::~CodeGenerator() {
 
 void CodeGenerator::gen() {
   program.debug_print();
-
   write_line(".section .text");
   for (auto &[func_name, func] : program.get_functions()) {
     write_text("\t.global ");
     write_line(func_name);
   }
   newline();
-
   for (auto &[func_name, func] : program.get_functions()) {
-    auto val2reg = regalloc(func, GPR_COUNT);
-    write_function(val2reg, func);
+    write_function(func);
   }
 }
 
 void CodeGenerator::finish() { outfile.close(); }
 
-void CodeGenerator::write_function(CodeGenerator::GraphColoring &val2reg,
-                                   Function &func) {
-  write_line(func.get_name() << ":");
+void CodeGenerator::write_function(Function &func) {
+  RegisterAllocation alloc(func, GPR_COUNT);
+  i32 i = 0;
+  for (i = 0; i < 8 && i < func.get_params().size(); i++) {
+    alloc.reserve_register(i, func.get_params()[i].value);
+  }
+  for (; i < func.get_params().size(); i++) {
+    alloc.reserve_spill(func.get_params()[i].value);
+  }
+  auto val2reg = alloc.allocate_registers();
+
   StackLocations stack_locs;
   stack_locs.space_allocated = 16;
   auto alloca_vars = find_alloca_variables(func);
@@ -123,9 +144,10 @@ void CodeGenerator::write_function(CodeGenerator::GraphColoring &val2reg,
   }
   stack_locs.space_allocated = pow_round16(stack_locs.space_allocated);
 
+  write_line(func.get_name() << ":");
   for (i32 i = 0; i < func.get_blocks().size(); i++) {
     auto block = func.get_blocks()[i].get();
-    write_line(block_label(block->label()));
+    write_line(block_label(block));
     if (i == 0) {
       write_line("stp fp, lr, [sp, -#" << stack_locs.space_allocated << "]!");
       write_line("mov fp, sp");
@@ -138,17 +160,23 @@ void CodeGenerator::write_function(CodeGenerator::GraphColoring &val2reg,
   }
 }
 
-void CodeGenerator::write_instruction(CodeGenerator::GraphColoring &val2reg,
+void CodeGenerator::write_instruction(std::unordered_map<Value *, i32> &val2reg,
                                       StackLocations &stack_locs,
                                       Instruction *instr) {
   if (instr->op_is_arithmetic()) {
     write_text(op2mnemonic(instr->get_op())
-               << " " << reg(instr->get_dest()) << ", "
-               << reg(instr->get_operand(0)) << ", "
-               << reg(instr->get_operand(1)));
+               << " " << reg(instr->get_dest()) << ", ");
+    write_value(outfile, val2reg, instr->get_operand(0));
+    write_text(", ");
+    write_value(outfile, val2reg, instr->get_operand(1));
+
   } else if (instr->op_is_comparison()) {
-    write_line("cmp " << reg(instr->get_operand(0)) << ", "
-                      << reg(instr->get_operand(1)));
+    write_text("cmp ");
+    write_value(outfile, val2reg, instr->get_operand(0));
+    write_text(", ");
+    write_value(outfile, val2reg, instr->get_operand(1));
+    newline();
+
     write_text("cset " << reg(instr->get_dest()) << ", ");
     switch (instr->get_op()) {
     case OP_CEQ: {
@@ -192,11 +220,11 @@ void CodeGenerator::write_instruction(CodeGenerator::GraphColoring &val2reg,
     } break;
     case OP_JMP: {
       write_line(op2mnemonic(instr->get_op())
-                 << " " << branch_dest(instr->get_labels()[0]));
+                 << " " << branch_dest(instr->get_block(0)));
     } break;
     case OP_BR: {
       write_line("cbz " << reg(instr->get_operand(0)) << ", "
-                        << branch_dest(instr->get_labels()[1]));
+                        << branch_dest(instr->get_block(1)));
     } break;
     case OP_RET: {
       if (instr->get_operands().size() > 0) {
@@ -209,25 +237,49 @@ void CodeGenerator::write_instruction(CodeGenerator::GraphColoring &val2reg,
       write_line("ldp fp, lr, [sp], #" << stack_locs.space_allocated);
       write_text(op2mnemonic(instr->get_op()));
     } break;
-
+    case OP_MOV: {
+      if (!val2reg.contains(instr->get_operand(0)) ||
+          val2reg[instr->get_dest()] != val2reg[instr->get_operand(0)]) {
+        write_text("mov " << reg(instr->get_dest()) << ", ");
+        write_value(outfile, val2reg, instr->get_operand(0));
+      }
+    } break;
+    case OP_PHI: {
+      write_text("phi " << reg(instr->get_dest()) << ", ");
+      for (i32 i = 0; i < instr->get_blocks().size(); i++) {
+        write_text(branch_dest(instr->get_block(i))
+                   << ", " << reg(instr->get_operand(i)));
+        if (i < instr->get_blocks().size() - 1) {
+          write_text(", ");
+        }
+      }
+    } break;
     default: {
+      write_text(op2str(instr->get_op()));
     } break;
     }
   }
   newline();
 }
 
-void CodeGenerator::interference_graph_insert_edge(InterferenceGraph &graph,
-                                                   Value *a, Value *b) {
-  default_insert(graph, a, b, std::unordered_set<Value *>());
-  default_insert(graph, b, a, std::unordered_set<Value *>());
+RegisterAllocation::RegisterAllocation(Function &function, i32 register_count)
+    : function(function), register_count(register_count) {}
+
+void RegisterAllocation::reserve_register(i32 reg, Value *value) {
+  allocation[value] = reg;
 }
 
-CodeGenerator::InterferenceGraph
-CodeGenerator::get_interference_graph(Function &function) {
-  std::unordered_map<Value *, std::unordered_set<Value *>> graph;
-  auto liveness = get_liveness(function);
+void RegisterAllocation::reserve_spill(Value *value) {
+  spilled_values.push_back(value);
+}
 
+std::vector<Value *> RegisterAllocation::generate_interference_graph() {
+  auto insert_edge = [&](Value *a, Value *b) {
+    default_insert(graph, a, b, std::unordered_set<Value *>());
+    default_insert(graph, b, a, std::unordered_set<Value *>());
+  };
+
+  auto liveness = get_liveness(function);
   for (auto &block : function.get_blocks()) {
     auto &live_set = liveness[block.get()].live_out;
     for (auto it = block->get_instructions().rbegin();
@@ -238,7 +290,7 @@ CodeGenerator::get_interference_graph(Function &function) {
       auto &operands = instr->get_operands();
       for (auto op_a = operands.begin(); op_a != operands.end(); ++op_a) {
         for (auto op_b = std::next(op_a); op_b != operands.end(); ++op_b) {
-          interference_graph_insert_edge(graph, *op_a, *op_b);
+          insert_edge(*op_a, *op_b);
         }
       }
 
@@ -246,7 +298,7 @@ CodeGenerator::get_interference_graph(Function &function) {
       if (instr->has_dest()) {
         for (auto live_val : live_set) {
           if (live_val != instr->get_dest()) {
-            interference_graph_insert_edge(graph, instr->get_dest(), live_val);
+            insert_edge(instr->get_dest(), live_val);
           }
         }
         live_set.erase(instr->get_dest());
@@ -267,24 +319,27 @@ CodeGenerator::get_interference_graph(Function &function) {
     std::cout << std::endl;
   }
 
-  return graph;
-}
+  auto reduced = graph;
+  std::vector<Value *> allocation_order;
+  for (auto it = spilled_values.begin(); it != spilled_values.end(); ++it) {
+    auto spilled = *it;
+    allocation_order.push_back(spilled);
+    for (auto &neighbor : reduced[spilled]) {
+      reduced[neighbor].erase(spilled);
+    }
+    reduced.erase(spilled);
+  }
 
-std::vector<Value *>
-CodeGenerator::reduce_interference_graph(InterferenceGraph graph,
-                                         i32 register_count) {
-  std::vector<Value *> stack;
-  while (!graph.empty()) {
+  while (!reduced.empty()) {
     b32 simplified = false;
-
-    for (auto it = graph.begin(); it != graph.end();) {
+    for (auto it = reduced.begin(); it != reduced.end();) {
       // attempt to remove low-degree nodes
       if (it->second.size() < register_count) {
-        stack.push_back(it->first);
+        allocation_order.push_back(it->first);
         for (auto &neighbor : it->second) {
-          graph[neighbor].erase(it->first);
+          reduced[neighbor].erase(it->first);
         }
-        it = graph.erase(it);
+        it = reduced.erase(it);
         simplified = true;
       } else {
         ++it;
@@ -293,52 +348,54 @@ CodeGenerator::reduce_interference_graph(InterferenceGraph graph,
 
     // spill high-degree nodes if necessary
     if (!simplified) {
-      auto spilled = graph.begin()->first;
-      stack.push_back(spilled);
-      graph.erase(spilled);
+      auto spilled = reduced.begin()->first;
+      allocation_order.push_back(spilled);
+      reduced.erase(spilled);
     }
   }
 
-  return stack;
+  return allocation_order;
 }
 
-CodeGenerator::GraphColoring CodeGenerator::regalloc(Function &function,
-                                                     i32 register_count) {
-  auto graph = get_interference_graph(function);
-  auto value_stack = reduce_interference_graph(graph, 32);
-
-  GraphColoring coloring;
+std::unordered_map<Value *, i32> RegisterAllocation::allocate_registers() {
+  auto value_stack = generate_interference_graph();
   while (!value_stack.empty()) {
     auto value = value_stack.back();
     value_stack.pop_back();
 
+    if (allocation.contains(value))
+      continue;
+
+    if (value->is_const_value())
+      continue;
+
     // get used colors
     std::unordered_set<i32> used_colors;
     for (const auto &neighbor : graph[value]) {
-      if (coloring.contains(neighbor)) {
-        used_colors.insert(coloring[neighbor]);
+      if (allocation.contains(neighbor)) {
+        used_colors.insert(allocation[neighbor]);
       }
     }
 
     // assign new color to value
     for (i32 color = 0; color < register_count; color++) {
       if (!used_colors.contains(color)) {
-        coloring[value] = color;
+        allocation[value] = color;
         break;
       }
     }
 
     // register must be spliied
-    if (!coloring.contains(value)) {
+    if (!allocation.contains(value)) {
       // TODO: Spill register
     }
   }
 
-  for (auto &[val, reg] : coloring) {
+  for (auto &[val, reg] : allocation) {
     std::cout << "val: " << val->get_name() << " in  reg" << reg << std::endl;
   }
 
-  return coloring;
+  return allocation;
 }
 
 } // namespace codegen

@@ -51,6 +51,7 @@ void IROptimizer::optimize() {
   for (auto &[_, func] : program.get_functions()) {
     do_alloca_promotion_pass(ctx, func);
     do_costant_folding_pass(ctx, func);
+    do_remove_phi_nodes_pass(ctx, func);
   }
 }
 
@@ -153,62 +154,76 @@ IROptimizer::find_stores(Function &function) {
 
       // add basic block to list of store sites for value
       stores
-          .try_emplace(instr->get_dest(),
+          .try_emplace(instr->get_operand(0),
                        std::pair<std::unordered_set<BasicBlock *>, Value *>())
           .first->second.first.insert(bb.get());
 
       // record initial store value
-      if (!stores[instr->get_dest()].second)
-        stores[instr->get_dest()].second = instr->get_operand(0);
+      if (!stores[instr->get_operand(0)].second)
+        stores[instr->get_operand(0)].second = instr->get_operand(1);
     }
   }
   return stores;
 }
 
 void IROptimizer::do_alloca_promotion_pass(IRContext &ctx, Function &function) {
+  using ValueStack = std::unordered_map<Value *, std::vector<Value *>>;
+
   auto doms = get_dominators(function);
   auto store_locs = find_stores(function);
   auto dom_fronts = get_dominance_frontiers(function.get_blocks(), doms);
   auto dom_tree = get_dominator_tree(doms);
 
-  std::unordered_map<Value *, std::vector<Value *>> val_stack;
+  ValueStack val_stack;
   std::unordered_map<Edge, Value *> phi_dests;
   std::unordered_map<BasicBlock *, std::unordered_set<Value *>> phi_locs;
-  std::unordered_map<Edge, std::vector<std::pair<Label, Value *>>> phi_args;
+  std::unordered_map<Edge, std::vector<std::pair<BasicBlock *, Value *>>>
+      phi_args;
 
   // find locations to place phi nodes
-  for (auto [var, stores] : store_locs) {
-    auto &[store_blocks, initial_store] = stores;
-    // TODO: handle loads before intial stores(?)
-    // set the intial value of the variable
-    default_push_back(val_stack, var, initial_store, std::vector<Value *>());
+  while (true) {
+    auto old_locs = store_locs;
+    for (auto [var, stores] : old_locs) {
+      auto &[store_blocks, initial_store] = stores;
+      // TODO: handle loads before intial stores(?)
+      // set the intial value of the variable
+      default_push_back(val_stack, var, initial_store, std::vector<Value *>());
+      for (auto store_block : store_blocks) {
+        for (auto df : dom_fronts[store_block]) {
+          default_insert(phi_locs, df, var, std::unordered_set<Value *>());
+          if (!store_blocks.contains(df)) {
+            auto def = std::unordered_map<
+                Value *,
+                std::pair<std::unordered_set<BasicBlock *>, Value *>>();
 
-    auto worklist = std::vector(store_blocks.begin(), store_blocks.end());
-    while (!worklist.empty()) {
-      auto block = worklist.back();
-      worklist.pop_back();
-      for (auto df : dom_fronts[block]) {
-        default_insert(phi_locs, df, var, std::unordered_set<Value *>());
-        if (!store_blocks.contains(df)) {
-          worklist.push_back(df);
+            store_locs
+                .try_emplace(
+                    var, std::pair<std::unordered_set<BasicBlock *>, Value *>())
+                .first->second.first.insert(df);
+          }
         }
       }
     }
+    if (old_locs == store_locs) {
+      break;
+    }
   }
 
-  std::vector<BasicBlock *> worklist{function.get_entry()};
+  std::vector<std::pair<BasicBlock *, ValueStack>> worklist{
+      {function.get_entry(), val_stack}};
   while (!worklist.empty()) {
-    auto bb = worklist.back();
+    auto [bb, curr_val_stack] = worklist.back();
     worklist.pop_back();
 
-    auto old_stack = val_stack;
-
     // generate new values to store the results of each phi node
-    for (auto phi_val : phi_locs[bb]) {
-      auto phi_dest = ctx.new_value("phitemp", phi_val->get_type());
-      default_push_back(val_stack, phi_val, phi_dest, std::vector<Value *>());
-      phi_dests[Edge{.incoming_block = bb, .incoming_value = phi_val}] =
-          phi_dest;
+    if (phi_locs.contains(bb)) {
+      for (auto phi_val : phi_locs[bb]) {
+        auto phi_dest = ctx.new_value("phitemp", phi_val->get_type());
+        default_push_back(curr_val_stack, phi_val, phi_dest,
+                          std::vector<Value *>());
+        phi_dests[Edge{.incoming_block = bb, .incoming_value = phi_val}] =
+            phi_dest;
+      }
     }
 
     for (auto &instr : bb->get_instructions()) {
@@ -217,7 +232,7 @@ void IROptimizer::do_alloca_promotion_pass(IRContext &ctx, Function &function) {
       if (instr->get_op() == OP_STR) {
         auto store_var = instr->get_operand(0);
         auto store_val = instr->get_operand(1);
-        val_stack.try_emplace(store_var, std::vector<Value *>())
+        curr_val_stack.try_emplace(store_var, std::vector<Value *>())
             .first->second.push_back(store_val);
         store_var->get_def_instr()->kill();
         instr->kill();
@@ -227,7 +242,7 @@ void IROptimizer::do_alloca_promotion_pass(IRContext &ctx, Function &function) {
       else if (instr->get_op() == OP_LD) {
         auto load_val = instr->get_dest();
         auto load_var = instr->get_operand(0);
-        load_val->replace_all_uses_with(val_stack[load_var].back());
+        load_val->replace_all_uses_with(curr_val_stack[load_var].back());
         instr->kill();
       }
     }
@@ -237,65 +252,34 @@ void IROptimizer::do_alloca_promotion_pass(IRContext &ctx, Function &function) {
       // for variable (back of stack)
       for (auto phi_val : phi_locs[succ]) {
         auto e = Edge{.incoming_block = succ, .incoming_value = phi_val};
-        std::pair<Label, Value *> v = {bb->label(), val_stack[phi_val].back()};
-        auto def = std::vector<std::pair<Label, Value *>>();
+        std::pair<BasicBlock *, Value *> v = {bb,
+                                              curr_val_stack[phi_val].back()};
+        auto def = std::vector<std::pair<BasicBlock *, Value *>>();
         default_push_back(phi_args, e, v, def);
       }
     }
 
-    // add dominators of current block to worklist
+    // add blocks dominated by the current block to worklist
     for (auto sub : dom_tree[bb]) {
-      worklist.push_back(sub);
+      worklist.push_back({sub, curr_val_stack});
     }
-
-    val_stack.clear();
-    val_stack.insert(old_stack.begin(), old_stack.end());
   }
 
   // insert phi nodes into basic blocks
   for (auto [edge, dest] : phi_dests) {
     auto phi_instr =
         edge.incoming_block->prepend_instr(OP_PHI, dest->get_type());
-    phi_instr->add_operand(dest);
+    phi_instr->set_dest(dest);
     dest->set_def_instr(phi_instr);
 
     auto args = phi_args[edge];
-    for (auto [label, val] : args) {
-      phi_instr->add_label(label);
+    for (auto [block, val] : args) {
+      phi_instr->add_block(block);
       phi_instr->add_operand(val);
       val->add_user(phi_instr);
     }
   }
 
-  std::cout << "phi_dests: " << std::endl;
-  for (auto [edge, dest] : phi_dests) {
-    std::cout << "bb: ";
-    edge.incoming_block->label().debug_print();
-    std::cout << std::endl;
-    std::cout << "value: " << edge.incoming_value->get_name() << std::endl;
-  }
-
-  std::cout << std::endl;
-  std::cout << std::endl;
-
-  std::cout << "phi_args: " << std::endl;
-  for (auto [edge, args] : phi_args) {
-    std::cout << "bb to insert into: ";
-    edge.incoming_block->label().debug_print();
-    std::cout << std::endl;
-
-    std::cout << "value to phi: " << edge.incoming_value->get_name()
-              << std::endl;
-
-    std::cout << "args: " << std::endl;
-    for (auto [label, value] : args) {
-      std::cout << "inc bb: ";
-      label.debug_print();
-      std::cout << std::endl;
-
-      std::cout << "inc value: " << value->get_name() << std::endl;
-    }
-  }
   function.remove_dead_instrs();
 }
 
@@ -382,6 +366,39 @@ void IROptimizer::do_costant_folding_pass(IRContext &ctx, Function &function) {
     }
     function.remove_dead_instrs();
   } while (constant_folded);
+}
+
+void IROptimizer::do_remove_phi_nodes_pass(IRContext &ctx, Function &function) {
+  struct Location {
+    BasicBlock *block;
+    Value *dest;
+    Value *val;
+  };
+
+  std::vector<Location> locations;
+  for (auto &bb : function.get_blocks()) {
+    for (auto &instr : bb->get_instructions()) {
+      if (instr->get_op() == OP_PHI) {
+        for (i32 i = 0; i < instr->get_blocks().size(); i++) {
+          locations.push_back({
+              .block = instr->get_block(i),
+              .dest = instr->get_dest(),
+              .val = instr->get_operand(i),
+          });
+        }
+        instr->kill();
+      }
+    }
+  }
+
+  for (auto loc : locations) {
+    auto instr = loc.block->push_instr_before_end(
+        OP_MOV, ctx.get_type(Type("void", 0, 0)));
+    instr->set_dest(loc.dest);
+    instr->add_operand(loc.val);
+  }
+
+  function.remove_dead_instrs();
 }
 
 } // namespace ir

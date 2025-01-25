@@ -48,7 +48,7 @@ Instruction *IRBuilder::push_jmp(BasicBlock *bb) {
   Instruction *jmp_instr =
       cursor->push_instr(OP_JMP, ctx.get_type(Type("void", 0, 0)));
 
-  jmp_instr->add_label(bb->label());
+  jmp_instr->add_block(bb);
 
   cursor->add_succ(bb);
   bb->add_pred(cursor);
@@ -61,8 +61,8 @@ Instruction *IRBuilder::push_br(Value *cond, BasicBlock *T, BasicBlock *F) {
       cursor->push_instr(OP_BR, ctx.get_type(Type("void", 0, 0)));
 
   br_instr->add_operand(cond);
-  br_instr->add_label(T->label());
-  br_instr->add_label(F->label());
+  br_instr->add_block(T);
+  br_instr->add_block(F);
 
   cond->add_user(br_instr);
 
@@ -85,7 +85,7 @@ Instruction *IRBuilder::push_call(Value *dest, Function *callee,
   call_instr->set_dest(dest);
   call_instr->set_function(callee);
 
-  auto callee_args = callee->get_args();
+  auto callee_args = callee->get_params();
   for (i32 i = 0; i < args.size(); i++) {
     assert(args[i]->get_type() == callee_args[i].type);
     call_instr->add_operand(args[i]);
@@ -427,9 +427,9 @@ Value *IRGenerator::gen(Program &program, Ast::NodePtr ptr) {
     auto fn_params =
         ast.get_array_of<Ast::FuncDefData::FuncParam>(ast.at(fn_data.params));
     for (auto param : fn_params) {
-      auto arg_name = ast.get<Ast::StringData>(ast.at(param.ident));
-      auto arg_type = ctx.convert_ast_type_to_ir_type(ast, param.type);
-      F->add_arg(Function::Arg{.type = arg_type, .name = arg_name});
+      auto param_name = ast.get<Ast::StringData>(ast.at(param.ident));
+      auto param_type = ctx.convert_ast_type_to_ir_type(ast, param.type);
+      F->add_param(param_name, param_type);
     }
 
     if (fn_data.blk != Ast::NULL_NODE) {
@@ -437,16 +437,15 @@ Value *IRGenerator::gen(Program &program, Ast::NodePtr ptr) {
       builder.set_cursor(entry_bb);
       program.push_scope();
 
-      for (auto param : fn_params) {
-        auto arg_name = ast.get<Ast::StringData>(ast.at(param.ident));
-        auto arg_type = ctx.convert_ast_type_to_ir_type(ast, param.type);
+      for (i32 i = 0; i < F->get_params().size(); i++) {
+        auto &param = F->get_params()[i];
         auto alloca =
-            ctx.new_value("alloctmp", ctx.get_type(Type::ptr_to(arg_type)));
-        auto arg_val = ctx.new_value("argtmp", arg_type);
+            ctx.new_value("alloctmp", ctx.get_type(Type::ptr_to(param.type)));
+        F->set_formal_parameter_value(i, ctx.new_value("paramtmp", param.type));
 
-        builder.push_alloca(alloca, arg_type);
-        builder.push_str(alloca, arg_val);
-        program.new_symbol(arg_name, alloca);
+        builder.push_alloca(alloca, param.type);
+        builder.push_str(alloca, param.value);
+        program.new_symbol(param.name, alloca);
       }
 
       auto stmts = ast.get_array_of<Ast::NodePtr>(ast.at(fn_data.blk));

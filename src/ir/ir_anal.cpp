@@ -1,4 +1,3 @@
-#include <iostream>
 #include <ir/ir_anal.h>
 
 namespace neo {
@@ -36,22 +35,6 @@ LivenessAnalysis get_liveness(Function &function) {
       L.live_in = std::move(new_in);
     }
   } while (changed);
-
-  for (auto &[block, result] : analysis) {
-    block->label().debug_print();
-    std::cout << ":" << std::endl;
-    std::cout << "\tin: ";
-    for (auto in : result.live_in) {
-      std::cout << in->get_name() << ", ";
-    }
-    std::cout << std::endl;
-
-    std::cout << "\tout: ";
-    for (auto out : result.live_out) {
-      std::cout << out->get_name() << ", ";
-    }
-    std::cout << std::endl;
-  }
 
   return analysis;
 }

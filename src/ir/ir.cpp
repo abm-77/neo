@@ -195,8 +195,8 @@ const char *op2str(InstructionOp op) {
     return "str"; // store
 
   // Misc
-  case OP_ID:
-    return "id";
+  case OP_MOV:
+    return "mov";
 
   default:
     return "unknown";
@@ -207,7 +207,12 @@ Instruction::Instruction(BasicBlock *parent, InstructionOp op, Type *type)
     : op(op), type(type), parent_block(parent), has_side_effects(false),
       dead(false) {}
 
-const std::vector<Label> &Instruction::get_labels() const { return labels; }
+const std::vector<BasicBlock *> &Instruction::get_blocks() const {
+  return blocks;
+}
+
+BasicBlock *Instruction::get_block(i32 block_idx) { return blocks[block_idx]; }
+
 BasicBlock *Instruction::get_parent_block() { return parent_block; }
 InstructionOp Instruction::get_op() const { return op; }
 
@@ -217,7 +222,7 @@ std::vector<Value *> &Instruction::get_operands() { return operands; }
 
 Value *Instruction::get_operand(u32 idx) { return operands[idx]; }
 
-void Instruction::add_label(Label label) { labels.push_back(label); }
+void Instruction::add_block(BasicBlock *block) { blocks.push_back(block); }
 
 void Instruction::add_operand(Value *operand) { operands.push_back(operand); }
 
@@ -251,6 +256,9 @@ b32 Instruction::alive() { return !dead; }
 void Instruction::kill() { dead = true; }
 
 b32 Instruction::has_const_operands() const {
+  if (!op_is_arithmetic() && !op_is_logical())
+    return false;
+
   for (auto op : operands) {
     if (!op->is_const_value())
       return false;
@@ -286,8 +294,8 @@ void Instruction::debug_print() const {
     std::cout << ", ";
   }
 
-  for (auto &label : labels) {
-    label.debug_print();
+  for (auto &block : blocks) {
+    block->label().debug_print();
     std::cout << ", ";
   }
 
@@ -318,6 +326,18 @@ std::vector<std::unique_ptr<Instruction>> &BasicBlock::get_instructions() {
 Instruction *BasicBlock::push_instr(InstructionOp op, Type *type) {
   instrs.push_back(std::make_unique<Instruction>(this, op, type));
   return instrs.back().get();
+}
+
+Instruction *BasicBlock::push_instr_before_end(InstructionOp op, Type *type) {
+  auto end = std::move(instrs.back());
+  instrs.pop_back();
+
+  instrs.push_back(std::make_unique<Instruction>(this, op, type));
+  auto res = instrs.back().get();
+
+  instrs.push_back(std::move(end));
+
+  return res;
 }
 
 Instruction *BasicBlock::prepend_instr(InstructionOp op, Type *type) {
@@ -386,9 +406,20 @@ Function::Function(std::string_view name, Type *ret_type)
 
 const std::string_view &Function::get_name() const { return name; }
 
-const std::vector<Function::Arg> &Function::get_args() { return args; }
+void Function::set_formal_parameter_value(i32 param, Value *value) {
+  params[param].value = value;
+}
 
-void Function::add_arg(Function::Arg arg) { args.push_back(arg); }
+const std::vector<Function::Parameter> &Function::get_params() {
+  return params;
+}
+
+void Function::add_param(std::string_view name, Type *type) {
+  params.push_back({
+      .type = type,
+      .name = name,
+  });
+}
 
 BasicBlock *Function::get_entry() { return basic_blocks.at(0).get(); }
 std::vector<std::unique_ptr<BasicBlock>> &Function::get_blocks() {

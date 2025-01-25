@@ -146,7 +146,7 @@ enum InstructionOp {
   OP_STR,
 
   // misc
-  OP_ID
+  OP_MOV
 };
 
 const char *op2str(InstructionOp op);
@@ -172,8 +172,9 @@ public:
 
   BasicBlock *get_parent_block();
 
-  const std::vector<Label> &get_labels() const;
-  void add_label(Label label);
+  const std::vector<BasicBlock *> &get_blocks() const;
+  void add_block(BasicBlock *block);
+  BasicBlock *get_block(i32 block_idx);
 
   void set_dest(Value *new_dest);
   Value *get_dest() const;
@@ -195,7 +196,7 @@ private:
 
   Value *dest;
   Function *function;
-  std::vector<Label> labels;
+  std::vector<BasicBlock *> blocks;
   std::vector<Value *> operands;
 
   std::vector<Instruction *> users;
@@ -224,6 +225,7 @@ public:
   Instruction *prepend_instr(std::unique_ptr<Instruction> instr);
 
   Instruction *push_instr(InstructionOp op, Type *type);
+  Instruction *push_instr_before_end(InstructionOp op, Type *type);
   std::vector<std::unique_ptr<Instruction>> &get_instructions();
 
   void add_pred(BasicBlock *bb);
@@ -248,17 +250,19 @@ private:
 
 class Function {
 public:
-  struct Arg {
+  struct Parameter {
     Type *type;
     std::string_view name;
+    Value *value;
   };
 
   Function();
   Function(std::string_view name, Type *ret_type);
 
   const std::string_view &get_name() const;
-  const std::vector<Arg> &get_args();
-  void add_arg(Arg arg);
+  void set_formal_parameter_value(i32 param, Value *value);
+  const std::vector<Parameter> &get_params();
+  void add_param(std::string_view name, Type *type);
 
   std::vector<std::unique_ptr<BasicBlock>> &get_blocks();
   BasicBlock *get_entry();
@@ -278,7 +282,7 @@ public:
 private:
   std::string_view name;
   Type *ret_type;
-  std::vector<Arg> args;
+  std::vector<Parameter> params;
   std::unordered_map<std::string_view, u32> block_numbers;
   std::vector<std::unique_ptr<BasicBlock>> basic_blocks;
 };

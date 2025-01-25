@@ -7,8 +7,19 @@ TODO:
 - [] add ir_opt tests
 - [] add ir_anal tests
 - [] add codegen_tests
-- [] assemble argument registers
-- [] enforce calling convention
+- [] handle register spills
+- [] enforce calling convention on caller side
+
+1/25/25:
+- [X] phi node removal pass 
+- [X] added mov instructions
+- [X] direct substitution for constant vals
+- [X] refactor register allocation
+- [X] refactored branching instructions
+- [X] removed some debug prints
+- [X] fixed control-flow copy propagation bug
+- [X] enforce calling convention on callee side
+
 
 1/23/25:
 - [X] assemble branches

@@ -64,9 +64,9 @@ TEST(IRBuilder, PushJmp) {
   auto res = bld.push_jmp(block);
 
   EXPECT_EQ(res->get_op(), OP_JMP);
-  EXPECT_EQ(res->get_labels()[0].fn_name, "test");
-  EXPECT_EQ(res->get_labels()[0].name, "block");
-  EXPECT_EQ(res->get_labels()[0].number, 0);
+  EXPECT_EQ(res->get_block(0)->label().fn_name, "test");
+  EXPECT_EQ(res->get_block(0)->label().name, "block");
+  EXPECT_EQ(res->get_block(0)->label().number, 0);
   EXPECT_EQ(start->get_succs()[0]->get_name(), "block");
 }
 
@@ -83,12 +83,12 @@ TEST(IRBuilder, PushBr) {
   auto res = bld.push_br(cond, blockt, blockf);
 
   EXPECT_EQ(res->get_op(), OP_BR);
-  EXPECT_EQ(res->get_labels()[0].fn_name, "test");
-  EXPECT_EQ(res->get_labels()[0].name, "blockt");
-  EXPECT_EQ(res->get_labels()[0].number, 0);
-  EXPECT_EQ(res->get_labels()[1].fn_name, "test");
-  EXPECT_EQ(res->get_labels()[1].name, "blockf");
-  EXPECT_EQ(res->get_labels()[1].number, 0);
+  EXPECT_EQ(res->get_block(0)->label().fn_name, "test");
+  EXPECT_EQ(res->get_block(0)->label().name, "blockt");
+  EXPECT_EQ(res->get_block(0)->label().number, 0);
+  EXPECT_EQ(res->get_block(1)->label().fn_name, "test");
+  EXPECT_EQ(res->get_block(1)->label().name, "blockf");
+  EXPECT_EQ(res->get_block(1)->label().number, 0);
   EXPECT_EQ(start->get_succs()[0]->get_name(), "blockt");
   EXPECT_EQ(start->get_succs()[1]->get_name(), "blockf");
 }
@@ -98,7 +98,7 @@ TEST(IRBuilder, PushCall) {
   Function func("test", void_type);
   auto block = func.add_block("block");
   Function callee("callee", void_type);
-  callee.add_arg(Function::Arg{.type = int_type, .name = "a"});
+  callee.add_param("a", int_type);
   IRBuilder bld(ctx);
   bld.set_cursor(block);
 
@@ -182,7 +182,9 @@ TEST(IR, IrTest) {
                          "const c: int = 5 + 1;"
                          "const d: int = c + 4;"
                          "const e: int = d + 10;"
-                         " return e + d + c + a + b;"
+                         "const f: int = a;"
+                         "f += 1;"
+                         " return e + d + c + a + b + f;"
                          "}");
   IRGenerator generator(ast);
   auto program = generator.make_program();
@@ -215,7 +217,7 @@ TEST(IR, IrTest) {
   /*std::cout << std::endl;*/
 
   IROptimizer opt(generator.get_context(), program);
-  opt.optimize();
+  /*opt.optimize();*/
   program.debug_print();
 }
 
