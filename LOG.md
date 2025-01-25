@@ -8,7 +8,6 @@ TODO:
 - [] add ir_anal tests
 - [] add codegen_tests
 - [] handle register spills
-- [] enforce calling convention on caller side
 
 1/25/25:
 - [X] phi node removal pass 
@@ -19,6 +18,7 @@ TODO:
 - [X] removed some debug prints
 - [X] fixed control-flow copy propagation bug
 - [X] enforce calling convention on callee side
+- [X] enforce calling convention on caller side (ish)
 
 
 1/23/25:

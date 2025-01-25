@@ -21,10 +21,10 @@ TEST(CodegenTest, Gen) {
   /*    " if (1 < 2) { a = 1; } else if (3 > 4) { a += 3; } else { a = b; }"*/
   /*    " return a + b;"*/
   /*    "}");*/
-  auto ast = parse_input("fn add(a: int, b: int) int {"
-                         "for (var i: int = 0; i < 10; i += 1) { a += 1; }"
-                         " return a + b;"
-                         "}");
+  /*auto ast = parse_input("fn add(a: int, b: int) int {"*/
+  /*                       "for (var i: int = 0; i < 10; i += 1) { a += 1; }"*/
+  /*                       " return a + b;"*/
+  /*                       "}");*/
   /*auto ast = parse_input("fn add(a: int, b: int) int {"*/
   /*                       "var i: int = 1;"*/
   /*                       "i += 1;"*/
@@ -45,6 +45,11 @@ TEST(CodegenTest, Gen) {
   /*                       "f += 1;"*/
   /*                       " return e + d + c + a + b + f;"*/
   /*                       "}");*/
+  auto ast = parse_input(
+      "fn sub(a: int, b: int) int { return a - b; }"
+      "fn add(a: int, b: int) int { return a + b; }"
+      "fn foo(a: int, b: int) int { return add(a, 1) * sub(1, b); }");
+
   IRGenerator IG(ast);
   auto program = IG.make_program();
   IROptimizer opt(IG.get_context(), program);

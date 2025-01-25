@@ -61,31 +61,33 @@ static std::vector<Value *> find_alloca_variables(Function &function) {
 static std::string_view op2mnemonic(InstructionOp op) {
   switch (op) {
   case OP_ADD:
-    return "add";
+    return "add ";
   case OP_SUB:
-    return "sub";
+    return "sub ";
   case OP_MUL:
-    return "mul";
+    return "mul ";
   case OP_DIV:
-    return "div";
+    return "div ";
   case OP_NEG:
-    return "neg";
+    return "neg ";
   case OP_NOT:
-    return "div";
+    return "div ";
   case OP_AND:
-    return "and";
+    return "and ";
   case OP_OR:
-    return "orr";
+    return "orr ";
   case OP_JMP:
-    return "b";
+    return "b ";
   case OP_CALL:
-    return "bl";
+    return "bl ";
   case OP_RET:
-    return "ret";
+    return "ret ";
   case OP_LD:
-    return "ldr";
+    return "ldr ";
   case OP_STR:
-    return "str";
+    return "str ";
+  case OP_BR:
+    return "cbz ";
   default:
     return "";
   }
@@ -158,18 +160,17 @@ void CodeGenerator::write_function(Function &func) {
       write_instruction(val2reg, stack_locs, instr.get());
     }
   }
+  newline();
 }
 
 void CodeGenerator::write_instruction(std::unordered_map<Value *, i32> &val2reg,
                                       StackLocations &stack_locs,
                                       Instruction *instr) {
   if (instr->op_is_arithmetic()) {
-    write_text(op2mnemonic(instr->get_op())
-               << " " << reg(instr->get_dest()) << ", ");
+    write_text(op2mnemonic(instr->get_op()) << reg(instr->get_dest()) << ", ");
     write_value(outfile, val2reg, instr->get_operand(0));
     write_text(", ");
     write_value(outfile, val2reg, instr->get_operand(1));
-
   } else if (instr->op_is_comparison()) {
     write_text("cmp ");
     write_value(outfile, val2reg, instr->get_operand(0));
@@ -205,7 +206,7 @@ void CodeGenerator::write_instruction(std::unordered_map<Value *, i32> &val2reg,
     switch (instr->get_op()) {
     case OP_LD: {
       write_text(op2mnemonic(instr->get_op())
-                 << " " << reg(instr->get_dest()) << ", [sp, "
+                 << reg(instr->get_dest()) << ", [sp, "
                  << stack_locs.offsets[instr->get_operand(0)]);
       if (instr->get_operands().size() > 1) {
         write_text(
@@ -215,16 +216,17 @@ void CodeGenerator::write_instruction(std::unordered_map<Value *, i32> &val2reg,
     } break;
     case OP_STR: {
       write_text(op2mnemonic(instr->get_op())
-                 << " " << reg(instr->get_operand(1)) << ", [sp, "
+                 << reg(instr->get_operand(1)) << ", [sp, "
                  << stack_locs.offsets[instr->get_operand(0)] << "]");
     } break;
     case OP_JMP: {
       write_line(op2mnemonic(instr->get_op())
-                 << " " << branch_dest(instr->get_block(0)));
+                 << branch_dest(instr->get_block(0)));
     } break;
     case OP_BR: {
-      write_line("cbz " << reg(instr->get_operand(0)) << ", "
-                        << branch_dest(instr->get_block(1)));
+      write_line(op2mnemonic(instr->get_op())
+                 << reg(instr->get_operand(0)) << ", "
+                 << branch_dest(instr->get_block(1)));
     } break;
     case OP_RET: {
       if (instr->get_operands().size() > 0) {
@@ -252,6 +254,20 @@ void CodeGenerator::write_instruction(std::unordered_map<Value *, i32> &val2reg,
         if (i < instr->get_blocks().size() - 1) {
           write_text(", ");
         }
+      }
+    } break;
+    case OP_CALL: {
+      // TODO: Save caller-saved registers
+      i32 i = 0;
+      for (i = 0; i < 8 && i < instr->get_operands().size(); i++) {
+        write_text("mov x" << i << ", ");
+        write_value(outfile, val2reg, instr->get_operand(i));
+        newline();
+      }
+      write_text("bl " << instr->get_function()->get_name());
+      if (val2reg[instr->get_dest()] != 0) {
+        newline();
+        write_text("mov " << reg(instr->get_dest()) << ", x0");
       }
     } break;
     default: {
