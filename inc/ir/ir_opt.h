@@ -26,6 +26,11 @@ struct Edge {
 
 void graph_print(const Graph &g);
 
+/*
+ * TODO:
+ * - make a unified way of passing dominator information around.
+ *   currently, we derive it in every function. we should reuse it.
+ * */
 class IROptimizer {
 public:
   IROptimizer(IRContext &ctx, Program &program);
@@ -39,6 +44,9 @@ private:
   Graph
   get_dominance_frontiers(std::vector<std::unique_ptr<BasicBlock>> &blocks,
                           const Graph &doms);
+
+  // loop helpers
+  void find_loops(Function &function);
 
   // TODO: move block helpers into BasicBlock class
   //

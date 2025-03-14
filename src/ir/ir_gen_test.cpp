@@ -188,7 +188,6 @@ TEST(IR, IrTest) {
                          "}");
   IRGenerator generator(ast);
   auto program = generator.make_program();
-
   /*auto &funcs = program.get_functions();*/
   /*for (auto &[_, func] : funcs) {*/
   /**/
@@ -217,7 +216,7 @@ TEST(IR, IrTest) {
   /*std::cout << std::endl;*/
 
   IROptimizer opt(generator.get_context(), program);
-  /*opt.optimize();*/
+  opt.optimize();
   program.debug_print();
 }
 

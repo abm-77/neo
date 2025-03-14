@@ -1,6 +1,8 @@
 project('neo', 'cpp', default_options : ['cpp_std=c++20'],)
 
-add_project_arguments(['-gdwarf-4'], language: 'cpp')
+add_project_arguments('-gdwarf-4', language: 'cpp')
+add_project_arguments('-fsanitize=address', language: 'cpp')
+add_project_link_arguments('-fsanitize=address', language : 'cpp')
 
 gtest_proj = subproject('gtest')
 gtest_dep = gtest_proj.get_variable('gtest_main_dep')

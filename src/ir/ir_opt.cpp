@@ -49,9 +49,10 @@ IROptimizer::IROptimizer(IRContext &ctx, Program &program)
 
 void IROptimizer::optimize() {
   for (auto &[_, func] : program.get_functions()) {
-    do_alloca_promotion_pass(ctx, func);
-    do_costant_folding_pass(ctx, func);
-    do_remove_phi_nodes_pass(ctx, func);
+    /*do_alloca_promotion_pass(ctx, func);*/
+    /*do_costant_folding_pass(ctx, func);*/
+    /*do_remove_phi_nodes_pass(ctx, func);*/
+    find_loops(func);
   }
 }
 
@@ -138,6 +139,18 @@ Graph IROptimizer::get_dominance_frontiers(
     }
   }
   return dom_front;
+}
+
+void IROptimizer::find_loops(Function &function) {
+  auto doms = get_dominators(function);
+  auto dom_tree = get_dominator_tree(doms);
+  for (auto &block : function.get_blocks()) {
+    for (auto &succ : block->get_succs()) {
+      if (dom_tree[succ].contains(block.get())) {
+        std::cout << "back edge found!" << std::endl;
+      }
+    }
+  }
 }
 
 // TODO differentiate between stores to variables and stores to arrays/pointers
