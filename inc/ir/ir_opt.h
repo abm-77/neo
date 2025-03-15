@@ -36,7 +36,6 @@ public:
   IROptimizer(IRContext &ctx, Program &program);
   void optimize();
 
-private:
   // dominator helpers
   Graph get_dominators(Function &function);
   Graph get_dominator_tree(const Graph &dominators);
@@ -46,7 +45,7 @@ private:
                           const Graph &doms);
 
   // loop helpers
-  void find_loops(Function &function);
+  std::vector<std::unordered_set<BasicBlock *>> find_loops(Function &function);
 
   // TODO: move block helpers into BasicBlock class
   //

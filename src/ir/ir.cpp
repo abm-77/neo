@@ -204,8 +204,8 @@ const char *op2str(InstructionOp op) {
 };
 
 Instruction::Instruction(BasicBlock *parent, InstructionOp op, Type *type)
-    : op(op), type(type), parent_block(parent), has_side_effects(false),
-      dead(false) {}
+    : op(op), type(type), dest(nullptr), function(nullptr),
+      parent_block(parent), has_side_effects(false), dead(false) {}
 
 const std::vector<BasicBlock *> &Instruction::get_blocks() const {
   return blocks;
@@ -286,7 +286,7 @@ void Instruction::debug_print() const {
   if (dest)
     std::cout << dest->get_name() << ", ";
 
-  if (function)
+  if (function != nullptr)
     std::cout << function->get_name() << ", ";
 
   for (auto &operand : operands) {
@@ -399,7 +399,7 @@ BasicBlock::UseDefInfo BasicBlock::get_uses_and_defs() {
 }
 
 // Function
-Function::Function() {}
+Function::Function() : name("") {}
 
 Function::Function(std::string_view name, Type *ret_type)
     : name(name), ret_type(ret_type) {}

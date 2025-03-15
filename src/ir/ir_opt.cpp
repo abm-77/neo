@@ -141,16 +141,38 @@ Graph IROptimizer::get_dominance_frontiers(
   return dom_front;
 }
 
-void IROptimizer::find_loops(Function &function) {
+std::vector<std::unordered_set<BasicBlock *>>
+IROptimizer::find_loops(Function &function) {
+  std::vector<std::unordered_set<BasicBlock *>> loops;
   auto doms = get_dominators(function);
   auto dom_tree = get_dominator_tree(doms);
   for (auto &block : function.get_blocks()) {
-    for (auto &succ : block->get_succs()) {
+    for (auto succ : block->get_succs()) {
+      // found back-edge
       if (dom_tree[succ].contains(block.get())) {
-        std::cout << "back edge found!" << std::endl;
+        // gather loop members
+        std::unordered_set<BasicBlock *> loop{block.get(), succ};
+        std::vector<BasicBlock *> worklist{block.get()};
+        while (!worklist.empty()) {
+          auto curr = worklist.back();
+          worklist.pop_back();
+          for (auto pred : curr->get_preds()) {
+            if (!loop.contains(pred)) {
+              loop.insert(pred);
+              worklist.push_back(pred);
+            }
+          }
+        }
+
+        for (auto bb : loop) {
+          bb->debug_print();
+        }
+
+        loops.push_back(std::move(loop));
       }
     }
   }
+  return loops;
 }
 
 // TODO differentiate between stores to variables and stores to arrays/pointers

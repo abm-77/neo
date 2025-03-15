@@ -1,4 +1,5 @@
 #include "ir/ir.h"
+#include <algorithm>
 #include <ir/ir_gen.h>
 #include <ir/ir_opt.h>
 
@@ -172,19 +173,38 @@ TEST(IRBuilder, PushLd) {
   EXPECT_EQ(res->get_operand(0), ptr);
 }
 
+TEST(IROpt, LoopIdentification) {
+  auto ast = parse_input("fn add(a: int, b: int) int {"
+                         "while (a < b) { a += 1; }"
+                         "return a;"
+                         "}");
+  IRGenerator generator(ast);
+  auto program = generator.make_program();
+  IROptimizer opt(generator.get_context(), program);
+  auto loop = opt.find_loops(program.get_functions()["add"])[0];
+  std::unordered_set<std::string_view> names{"loop_header", "loop_body"};
+  for (auto bb : loop)
+    names.erase(bb->get_name());
+  EXPECT_EQ(names.size(), 0);
+}
+
 TEST(IR, IrTest) {
   /*auto ast = parse_input(*/
   /*    "fn add(a: int, b: int) int {"*/
   /*    "if (1 < 2) { a += 1; } else if (2 < 3) { a = 2; } else { a = b; }"*/
   /*    " return a + b;"*/
   /*    "}");*/
+  /*auto ast = parse_input("fn add(a: int, b: int) int {"*/
+  /*                       "const c: int = 5 + 1;"*/
+  /*                       "const d: int = c + 4;"*/
+  /*                       "const e: int = d + 10;"*/
+  /*                       "const f: int = a;"*/
+  /*                       "f += 1;"*/
+  /*                       " return e + d + c + a + b + f;"*/
+  /*                       "}");*/
   auto ast = parse_input("fn add(a: int, b: int) int {"
-                         "const c: int = 5 + 1;"
-                         "const d: int = c + 4;"
-                         "const e: int = d + 10;"
-                         "const f: int = a;"
-                         "f += 1;"
-                         " return e + d + c + a + b + f;"
+                         "while (a < b) { a += 1; }"
+                         "return a;"
                          "}");
   IRGenerator generator(ast);
   auto program = generator.make_program();
@@ -217,7 +237,6 @@ TEST(IR, IrTest) {
 
   IROptimizer opt(generator.get_context(), program);
   opt.optimize();
-  program.debug_print();
 }
 
 } // namespace ir
