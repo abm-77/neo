@@ -89,7 +89,8 @@ public:
   void set_def_instr(Instruction *instr);
 
   void add_user(Instruction *user);
-  const std::vector<Instruction *> &get_users() const;
+  void delete_user(Instruction *user);
+  const std::unordered_set<Instruction *> &get_users() const;
 
   bool is_const_value() const;
   ConstantValue get_const_value();
@@ -106,7 +107,7 @@ private:
   std::string_view name;
   Type *type;
   Instruction *def_instr;
-  std::vector<Instruction *> users;
+  std::unordered_set<Instruction *> users;
   std::optional<ConstantValue> constant_value;
   b32 dead;
 };
@@ -155,17 +156,21 @@ class Instruction {
 public:
   Instruction(BasicBlock *parent_block, InstructionOp op, Type *type);
 
+  static void move(Instruction *dst, Instruction *src);
+
   InstructionOp get_op() const;
   void set_op(InstructionOp new_op);
   b32 op_is_arithmetic() const;
   b32 op_is_comparison() const;
   b32 op_is_logical() const;
+  b32 op_is_control() const;
 
   std::vector<Value *> &get_operands();
   Value *get_operand(u32 idx);
   void add_operand(Value *operand);
   void replace_operand(Value *oldv, Value *newv);
   b32 has_const_operands() const;
+  b32 has_side_effects() const;
 
   Function *get_function() const;
   void set_function(Function *function);
@@ -180,7 +185,7 @@ public:
   Value *get_dest() const;
   bool has_dest() const;
 
-  std::vector<Instruction *> get_users();
+  std::vector<Instruction *> &get_users();
   void add_user(Instruction *user);
 
   Type *get_type() const;
@@ -201,7 +206,7 @@ private:
 
   std::vector<Instruction *> users;
   BasicBlock *parent_block;
-  b32 has_side_effects;
+  b32 side_effects;
   b32 dead;
 };
 

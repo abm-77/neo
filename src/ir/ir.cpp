@@ -5,6 +5,7 @@
 #include <memory>
 #include <optional>
 #include <string_view>
+#include <unordered_set>
 #include <variant>
 
 namespace std {
@@ -99,9 +100,13 @@ Instruction *Value::get_def_instr() const { return def_instr; }
 
 void Value::set_def_instr(Instruction *instr) { def_instr = instr; }
 
-void Value::add_user(Instruction *user) { users.push_back(user); }
+void Value::add_user(Instruction *user) { users.insert(user); }
 
-const std::vector<Instruction *> &Value::get_users() const { return users; }
+void Value::delete_user(Instruction *user) { users.erase(user); }
+
+const std::unordered_set<Instruction *> &Value::get_users() const {
+  return users;
+}
 
 bool Value::is_const_value() const { return constant_value.has_value(); }
 
@@ -205,10 +210,21 @@ const char *op2str(InstructionOp op) {
 
 Instruction::Instruction(BasicBlock *parent, InstructionOp op, Type *type)
     : op(op), type(type), dest(nullptr), function(nullptr),
-      parent_block(parent), has_side_effects(false), dead(false) {}
+      parent_block(parent), side_effects(false), dead(false) {}
 
 const std::vector<BasicBlock *> &Instruction::get_blocks() const {
   return blocks;
+}
+
+void Instruction::move(Instruction *dst, Instruction *src) {
+  if (src->has_dest())
+    src->get_dest()->set_def_instr(dst);
+
+  for (auto op : src->get_operands())
+    op->add_user(dst);
+
+  *dst = *src;
+  src->kill();
 }
 
 BasicBlock *Instruction::get_block(i32 block_idx) { return blocks[block_idx]; }
@@ -232,7 +248,7 @@ Value *Instruction::get_dest() const { return dest; }
 
 bool Instruction::has_dest() const { return dest != nullptr; }
 
-std::vector<Instruction *> Instruction::get_users() { return users; }
+std::vector<Instruction *> &Instruction::get_users() { return users; }
 
 Function *Instruction::get_function() const { return function; }
 
@@ -254,6 +270,8 @@ void Instruction::replace_operand(Value *oldv, Value *newv) {
 b32 Instruction::alive() { return !dead; }
 
 void Instruction::kill() { dead = true; }
+
+b32 Instruction::has_side_effects() const { return side_effects; }
 
 b32 Instruction::has_const_operands() const {
   if (!op_is_arithmetic() && !op_is_logical())
@@ -279,6 +297,8 @@ b32 Instruction::op_is_comparison() const {
 b32 Instruction::op_is_logical() const {
   return op == OP_NOT || op == OP_AND || op == OP_OR;
 }
+
+b32 Instruction::op_is_control() const { return op == OP_BR || op == OP_JMP; }
 
 void Instruction::debug_print() const {
   std::cout << op2str(op) << " ";
@@ -369,10 +389,14 @@ void BasicBlock::debug_print() const {
 
 void BasicBlock::remove_dead_instrs() {
   for (auto it = instrs.begin(); it != instrs.end();) {
-    if (!it->get()->alive())
+    auto instr = it->get();
+    if (!instr->alive()) {
+      for (auto op : instr->get_operands())
+        op->delete_user(instr);
       it = instrs.erase(it);
-    else
+    } else {
       it++;
+    }
   }
 }
 

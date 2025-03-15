@@ -65,7 +65,8 @@ TEST(IRTest, UseReplacement) {
   EXPECT_EQ(instr->get_operand(1), a);
   a->replace_all_uses_with(c);
   EXPECT_EQ(instr->get_operand(1), c);
-  EXPECT_EQ(c->get_users()[0], instr);
+  for (auto user : c->get_users())
+    EXPECT_EQ(user, instr);
 }
 
 TEST(IRTest, RemoveDeadInstrs) {

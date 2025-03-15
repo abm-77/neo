@@ -141,6 +141,7 @@ Instruction *IRBuilder::push_str(Value *dest, Value *value, Value *offset) {
   if (offset)
     str_instr->add_operand(offset);
 
+  dest->add_user(str_instr);
   value->add_user(str_instr);
   if (offset)
     offset->add_user(str_instr);

@@ -45,7 +45,7 @@ public:
                           const Graph &doms);
 
   // loop helpers
-  std::vector<std::unordered_set<BasicBlock *>> find_loops(Function &function);
+  Graph find_loops(Function &function);
 
   // TODO: move block helpers into BasicBlock class
   //
@@ -63,7 +63,7 @@ public:
   void do_alloca_promotion_pass(IRContext &ctx, Function &function);
   void do_costant_folding_pass(IRContext &ctx, Function &function);
   void do_branch_elimination_pass(IRContext &ctx, Function &function);
-  void do_loop_optimization_pass(IRContext &ctx, Function &function);
+  void do_licm_pass(IRContext &ctx, Function &function);
   void do_remove_phi_nodes_pass(IRContext &ctx, Function &function);
 
 private:

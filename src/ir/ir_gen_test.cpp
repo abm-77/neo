@@ -1,5 +1,4 @@
 #include "ir/ir.h"
-#include <algorithm>
 #include <ir/ir_gen.h>
 #include <ir/ir_opt.h>
 
@@ -176,15 +175,19 @@ TEST(IRBuilder, PushLd) {
 TEST(IROpt, LoopIdentification) {
   auto ast = parse_input("fn add(a: int, b: int) int {"
                          "while (a < b) { a += 1; }"
+                         "for (var i : int = 0; i < 10; i += 1) { b += 1; } "
+
                          "return a;"
                          "}");
   IRGenerator generator(ast);
   auto program = generator.make_program();
   IROptimizer opt(generator.get_context(), program);
-  auto loop = opt.find_loops(program.get_functions()["add"])[0];
+  auto loop = opt.find_loops(program.get_functions()["add"]);
   std::unordered_set<std::string_view> names{"loop_header", "loop_body"};
-  for (auto bb : loop)
-    names.erase(bb->get_name());
+  for (auto &[header, loop] : loop) {
+    for (auto bb : loop)
+      names.erase(bb->get_name());
+  }
   EXPECT_EQ(names.size(), 0);
 }
 
@@ -202,10 +205,12 @@ TEST(IR, IrTest) {
   /*                       "f += 1;"*/
   /*                       " return e + d + c + a + b + f;"*/
   /*                       "}");*/
-  auto ast = parse_input("fn add(a: int, b: int) int {"
-                         "while (a < b) { a += 1; }"
-                         "return a;"
-                         "}");
+  auto ast =
+      parse_input("fn add(a: int, b: int) int {"
+                  "var c : int = 3;"
+                  "while (a < b) {  var d : int = 9; a += d * 3;  c = 2;  }"
+                  "return a;"
+                  "}");
   IRGenerator generator(ast);
   auto program = generator.make_program();
   /*auto &funcs = program.get_functions();*/
@@ -237,6 +242,7 @@ TEST(IR, IrTest) {
 
   IROptimizer opt(generator.get_context(), program);
   opt.optimize();
+  program.debug_print();
 }
 
 } // namespace ir

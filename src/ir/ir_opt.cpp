@@ -2,6 +2,7 @@
 #include <iostream>
 #include <ir/ir.h>
 #include <ir/ir_opt.h>
+#include <set>
 
 namespace std {
 template <> struct hash<neo::ir::Edge> {
@@ -49,10 +50,10 @@ IROptimizer::IROptimizer(IRContext &ctx, Program &program)
 
 void IROptimizer::optimize() {
   for (auto &[_, func] : program.get_functions()) {
-    /*do_alloca_promotion_pass(ctx, func);*/
-    /*do_costant_folding_pass(ctx, func);*/
-    /*do_remove_phi_nodes_pass(ctx, func);*/
-    find_loops(func);
+    do_licm_pass(ctx, func);
+    do_alloca_promotion_pass(ctx, func);
+    do_costant_folding_pass(ctx, func);
+    do_remove_phi_nodes_pass(ctx, func);
   }
 }
 
@@ -141,9 +142,8 @@ Graph IROptimizer::get_dominance_frontiers(
   return dom_front;
 }
 
-std::vector<std::unordered_set<BasicBlock *>>
-IROptimizer::find_loops(Function &function) {
-  std::vector<std::unordered_set<BasicBlock *>> loops;
+Graph IROptimizer::find_loops(Function &function) {
+  Graph loops;
   auto doms = get_dominators(function);
   auto dom_tree = get_dominator_tree(doms);
   for (auto &block : function.get_blocks()) {
@@ -163,19 +163,123 @@ IROptimizer::find_loops(Function &function) {
             }
           }
         }
-
-        for (auto bb : loop) {
-          bb->debug_print();
-        }
-
-        loops.push_back(std::move(loop));
+        loops[succ] = std::move(loop);
       }
     }
   }
   return loops;
 }
 
-// TODO differentiate between stores to variables and stores to arrays/pointers
+std::vector<Instruction *>
+find_loop_invariant_instructions(BasicBlock *header,
+                                 std::unordered_set<BasicBlock *> loop) {
+  std::vector<Instruction *> loop_invariant_instrs;
+  std::unordered_set<Value *> loop_dependent_vals;
+  std::unordered_set<Value *> loop_declared_vars;
+  std::unordered_map<Value *, std::set<Instruction *>> writers;
+
+  // any values used within the loop header are loop dependent
+  for (auto &instr : header->get_instructions()) {
+    loop_dependent_vals.insert(instr->get_operands().begin(),
+                               instr->get_operands().end());
+  }
+
+  for (auto bb : loop) {
+    for (auto &instr : bb->get_instructions()) {
+      if (instr->get_op() == OP_ALLOCA) {
+        loop_declared_vars.insert(instr->get_dest());
+      }
+
+      if (instr->has_dest()) {
+        // instructions that modify loop dependent varibles are not loop
+        // invariant
+        if (loop_dependent_vals.contains(instr->get_dest())) {
+          continue;
+        }
+
+        // instructions that dependend on loop dependent values are not loop
+        // invariant
+        for (auto op : instr->get_operands()) {
+          if (loop_dependent_vals.contains(op)) {
+            loop_dependent_vals.insert(instr->get_dest());
+            break;
+          }
+        }
+      }
+
+      if (instr->get_op() == OP_STR) {
+        auto str_val = instr->get_operand(0);
+        writers[str_val].insert(instr.get());
+
+        // stores to variables not defined within the loop are not loop
+        // invariant
+        if (!loop_declared_vars.contains(str_val))
+          loop_dependent_vals.insert(str_val);
+
+        // if this variable is writen to more than once (i.e., it is not
+        // constant), this store is not loop invariant
+        if (writers.size() > 1) {
+          loop_dependent_vals.insert(str_val);
+        }
+      }
+    }
+  }
+
+  for (auto bb : loop) {
+    for (auto &instr : bb->get_instructions()) {
+      // all allocas should be moved outside of the loop
+      if (instr->get_op() == OP_ALLOCA) {
+        loop_invariant_instrs.push_back(instr.get());
+        continue;
+      }
+
+      // control flow instructions are not loop invariant
+      if (instr->op_is_control())
+        continue;
+
+      // instructions with side effects are not loop invariant
+      if (instr->has_side_effects())
+        continue;
+
+      // cannot modify loop header variable
+      if (loop_dependent_vals.contains(instr->get_dest()))
+        continue;
+
+      // cannot depend on a loop defined variable
+      if (!instr->has_const_operands()) {
+        b32 dependent_ops = false;
+        for (auto op : instr->get_operands()) {
+          if (loop_dependent_vals.contains(op)) {
+            dependent_ops = true;
+            break;
+          }
+        }
+
+        if (dependent_ops)
+          continue;
+      }
+      loop_invariant_instrs.push_back(instr.get());
+    }
+  }
+  return loop_invariant_instrs;
+}
+
+void IROptimizer::do_licm_pass(IRContext &ctx, Function &function) {
+  auto loops = find_loops(function);
+  for (auto &[header, loop] : loops) {
+    std::vector<Instruction *> invariants =
+        find_loop_invariant_instructions(header, loop);
+    for (auto instr : invariants) {
+      auto ptr =
+          header->push_instr_before_end(instr->get_op(), instr->get_type());
+      Instruction::move(ptr, instr);
+    }
+  }
+  function.remove_dead_instrs();
+}
+
+// TODO differentiate between stores to variables and stores to
+// arrays/pointers
 std::unordered_map<Value *,
                    std::pair<std::unordered_set<BasicBlock *>, Value *>>
 IROptimizer::find_stores(Function &function) {
@@ -262,8 +366,8 @@ void IROptimizer::do_alloca_promotion_pass(IRContext &ctx, Function &function) {
     }
 
     for (auto &instr : bb->get_instructions()) {
-      // get the value being stored to this variable and push it onto the stack
-      // then eliminate store.
+      // get the value being stored to this variable and push it onto the
+      // stack then eliminate store.
       if (instr->get_op() == OP_STR) {
         auto store_var = instr->get_operand(0);
         auto store_val = instr->get_operand(1);
